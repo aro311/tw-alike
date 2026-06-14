@@ -4,7 +4,7 @@ import shared
 
 @MainActor
 class SettingsViewModelWrapper: ObservableObject {
-    private let helper = SettingsViewModelHelper()
+    private let viewModel = resolveSettingsViewModel()
     @Published var state: SettingsState = SettingsState(
         favoriteIntervals: [],
         allIntervals: DomainInterval.allCases
@@ -13,15 +13,15 @@ class SettingsViewModelWrapper: ObservableObject {
 
     func start() {
         task = Task {
-            for await s in helper.viewModel.state {
+            for await s in viewModel.state {
                 self.state = s
             }
         }
     }
 
     func stop() { task?.cancel() }
-    func addFavorite(_ interval: DomainInterval) { helper.viewModel.addFavorite(interval: interval) }
-    func removeFavorite(_ interval: DomainInterval) { helper.viewModel.removeFavorite(interval: interval) }
+    func addFavorite(_ interval: DomainInterval) { viewModel.addFavorite(interval: interval) }
+    func removeFavorite(_ interval: DomainInterval) { viewModel.removeFavorite(interval: interval) }
 }
 
 struct SettingsScreen: View {

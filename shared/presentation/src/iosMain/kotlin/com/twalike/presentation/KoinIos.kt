@@ -8,10 +8,9 @@ import com.twalike.presentation.di.presentationModule
 import com.twalike.presentation.search.CoinSearchViewModel
 import com.twalike.presentation.settings.SettingsViewModel
 import com.twalike.presentation.watchlist.WatchlistViewModel
-import org.koin.core.component.KoinComponent
-import org.koin.core.component.inject
 import org.koin.core.context.startKoin
 import org.koin.core.parameter.parametersOf
+import org.koin.mp.KoinPlatform
 import org.koin.dsl.module
 
 fun initKoin() {
@@ -27,18 +26,8 @@ fun initKoin() {
     }
 }
 
-class WatchlistViewModelHelper : KoinComponent {
-    val viewModel: WatchlistViewModel by inject()
-}
-
-class CoinSearchViewModelHelper : KoinComponent {
-    val viewModel: CoinSearchViewModel by inject()
-}
-
-class SettingsViewModelHelper : KoinComponent {
-    val viewModel: SettingsViewModel by inject()
-}
-
-class ChartViewModelHelper(symbol: String) : KoinComponent {
-    val viewModel: ChartViewModel by inject(parameters = { parametersOf(symbol) })
-}
+fun resolveWatchlistViewModel(): WatchlistViewModel = KoinPlatform.getKoin().get()
+fun resolveCoinSearchViewModel(): CoinSearchViewModel = KoinPlatform.getKoin().get()
+fun resolveSettingsViewModel(): SettingsViewModel = KoinPlatform.getKoin().get()
+fun resolveChartViewModel(symbol: String): ChartViewModel =
+    KoinPlatform.getKoin().get(parameters = { parametersOf(symbol) })

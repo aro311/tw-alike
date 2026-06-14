@@ -4,21 +4,21 @@ import shared
 
 @MainActor
 class CoinSearchViewModelWrapper: ObservableObject {
-    private let helper = CoinSearchViewModelHelper()
+    private let viewModel = resolveCoinSearchViewModel()
     @Published var state: CoinSearchState = CoinSearchState(query: "", results: [], isLoading: false)
     private var task: Task<Void, Never>?
 
     func start() {
         task = Task {
-            for await s in helper.viewModel.state {
+            for await s in viewModel.state {
                 self.state = s
             }
         }
     }
 
     func stop() { task?.cancel() }
-    func updateQuery(_ query: String) { helper.viewModel.updateQuery(query: query) }
-    func addToWatchlist(_ symbol: String) { helper.viewModel.addToWatchlist(symbol: symbol) }
+    func updateQuery(_ query: String) { viewModel.updateQuery(query: query) }
+    func addToWatchlist(_ symbol: String) { viewModel.addToWatchlist(symbol: symbol) }
 }
 
 struct CoinSearchSheet: View {

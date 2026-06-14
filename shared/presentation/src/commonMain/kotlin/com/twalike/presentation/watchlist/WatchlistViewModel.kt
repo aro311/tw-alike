@@ -25,8 +25,8 @@ data class WatchlistState(
 class WatchlistViewModel(
     private val observeWatchlistUseCase: ObserveWatchlistUseCase,
     private val watchlistRepository: WatchlistRepository,
+    private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main),
 ) {
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     private val _state = MutableStateFlow(WatchlistState())
     val state: StateFlow<WatchlistState> = _state

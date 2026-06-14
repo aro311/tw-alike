@@ -1,6 +1,7 @@
 package com.twalike.data.repository
 
 import com.twalike.data.db.TWAlikeDatabase
+import com.twalike.domain.indicator.Indicator
 import com.twalike.domain.model.IndicatorConfig
 import com.twalike.domain.model.IndicatorType
 import com.twalike.domain.repository.IndicatorRepository
@@ -13,7 +14,10 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
-class IndicatorRepositoryImpl(private val db: TWAlikeDatabase) : IndicatorRepository {
+class IndicatorRepositoryImpl(
+    private val db: TWAlikeDatabase,
+    private val registry: Map<IndicatorType, Indicator>,
+) : IndicatorRepository {
 
     override fun observeConfigs(symbol: String): Flow<List<IndicatorConfig>> =
         db.tWAlikeDatabaseQueries.selectIndicatorConfigs(symbol)
@@ -46,12 +50,12 @@ class IndicatorRepositoryImpl(private val db: TWAlikeDatabase) : IndicatorReposi
             )
         }
 
-    private fun defaultConfigs(symbol: String) = listOf(
-        IndicatorConfig(symbol, IndicatorType.SMA, isVisible = false, mapOf("period" to "20")),
-        IndicatorConfig(symbol, IndicatorType.EMA, isVisible = false, mapOf("period" to "20")),
-        IndicatorConfig(symbol, IndicatorType.BOLLINGER_BANDS, isVisible = false, mapOf("period" to "20", "stdDev" to "2.0")),
-        IndicatorConfig(symbol, IndicatorType.VOLUME, isVisible = true, emptyMap()),
-        IndicatorConfig(symbol, IndicatorType.RSI, isVisible = false, mapOf("period" to "14", "overbought" to "70", "oversold" to "30")),
-        IndicatorConfig(symbol, IndicatorType.MACD, isVisible = false, mapOf("fast" to "12", "slow" to "26", "signal" to "9")),
-    )
+    private fun defaultConfigs(symbol: String) = registry.map { (type, indicator) ->
+        IndicatorConfig(
+            symbol = symbol,
+            type = type,
+            isVisible = type == IndicatorType.VOLUME,
+            params = indicator.defaultParams,
+        )
+    }
 }

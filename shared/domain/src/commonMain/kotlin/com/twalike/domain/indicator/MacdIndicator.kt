@@ -8,14 +8,16 @@ import com.twalike.domain.model.IndicatorType
 import com.twalike.domain.model.KlineWindow
 
 class MacdIndicator : Indicator {
+    override val defaultParams = DEFAULT_PARAMS
+
     override fun compute(window: KlineWindow, config: IndicatorConfig): IndicatorResult {
         val fastPeriod = config.params["fast"]?.toIntOrNull() ?: 12
         val slowPeriod = config.params["slow"]?.toIntOrNull() ?: 26
         val signalPeriod = config.params["signal"]?.toIntOrNull() ?: 9
         val closes = window.klines.map { it.close }
 
-        val fastEma = computeEma(closes, fastPeriod)
-        val slowEma = computeEma(closes, slowPeriod)
+        val fastEma = computeEmaValues(closes, fastPeriod)
+        val slowEma = computeEmaValues(closes, slowPeriod)
 
         val macdLine = closes.indices.map { i ->
             val f = fastEma[i]; val s = slowEma[i]
@@ -23,7 +25,7 @@ class MacdIndicator : Indicator {
         }
 
         val macdValues = macdLine.filterNotNull()
-        val signalValues = computeEma(macdValues, signalPeriod)
+        val signalValues = computeEmaValues(macdValues, signalPeriod)
         val signalOffset = macdLine.indexOfFirst { it != null }
 
         val signal = MutableList<Double?>(closes.size) { null }
@@ -43,22 +45,6 @@ class MacdIndicator : Indicator {
                 IndicatorSeries("Histogram", histogram),
             ),
         )
-    }
-
-    private fun computeEma(values: List<Double>, period: Int): List<Double?> {
-        if (values.size < period) return List(values.size) { null }
-        val k = 2.0 / (period + 1)
-        val result = mutableListOf<Double?>()
-        var ema: Double? = null
-        values.forEachIndexed { i, v ->
-            ema = when {
-                i == period - 1 -> values.take(period).average()
-                i > period - 1 -> v * k + ema!! * (1 - k)
-                else -> null
-            }
-            result.add(if (i < period - 1) null else ema)
-        }
-        return result
     }
 
     companion object {

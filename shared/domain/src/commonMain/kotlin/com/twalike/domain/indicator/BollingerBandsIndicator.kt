@@ -9,6 +9,7 @@ import com.twalike.domain.model.KlineWindow
 import kotlin.math.sqrt
 
 class BollingerBandsIndicator : Indicator {
+    override val defaultParams = DEFAULT_PARAMS
     override fun compute(window: KlineWindow, config: IndicatorConfig): IndicatorResult {
         val period = config.params["period"]?.toIntOrNull() ?: 20
         val stdDevMultiplier = config.params["stdDev"]?.toDoubleOrNull() ?: 2.0

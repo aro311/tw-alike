@@ -15,11 +15,11 @@ import com.twalike.domain.repository.WatchlistRepository
 import com.twalike.domain.usecase.ComputeIndicatorsUseCase
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.catch
-import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
@@ -45,6 +45,7 @@ class ChartViewModel(
     private val computeIndicatorsUseCase: ComputeIndicatorsUseCase,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private var intervalJob: Job? = null
 
     private val _state = MutableStateFlow(ChartState(symbol = symbol))
     val state: StateFlow<ChartState> = _state
@@ -74,23 +75,19 @@ class ChartViewModel(
     }
 
     private fun loadKlineWindow(interval: Interval) {
-        scope.launch {
+        intervalJob?.cancel()
+        intervalJob = scope.launch {
             _state.update { it.copy(isLoading = true, interval = interval) }
             runCatching { marketRepository.getKlineWindow(symbol, interval) }
                 .onSuccess { window ->
-                    val configs = indicatorRepository.observeConfigs(symbol)
-                    // Observe configs reactively to recompute indicators on change
-                    combine(
-                        kotlinx.coroutines.flow.flowOf(window),
-                        indicatorRepository.observeConfigs(symbol),
-                    ) { w, cfgs ->
-                        val results = computeIndicatorsUseCase.execute(w, cfgs)
-                        _state.update { it.copy(klineWindow = w, indicators = results, isLoading = false) }
-                    }
+                    indicatorRepository.observeConfigs(symbol)
+                        .onEach { cfgs ->
+                            val results = computeIndicatorsUseCase.execute(window, cfgs)
+                            _state.update { it.copy(klineWindow = window, indicators = results, isLoading = false) }
+                        }
                         .catch { e -> _state.update { it.copy(error = e.message, isLoading = false) } }
-                        .launchIn(scope)
+                        .launchIn(this)
 
-                    // Subscribe to live kline updates
                     marketRepository.observeKlines(symbol, interval)
                         .onEach { liveKline ->
                             _state.update { state ->
@@ -98,12 +95,11 @@ class ChartViewModel(
                                 val updated = current.klines.toMutableList()
                                 val lastIndex = updated.indexOfLast { it.openTime == liveKline.openTime }
                                 if (lastIndex >= 0) updated[lastIndex] = liveKline else updated.add(liveKline)
-                                val newWindow = current.copy(klines = updated)
-                                state.copy(klineWindow = newWindow)
+                                state.copy(klineWindow = current.copy(klines = updated))
                             }
                         }
                         .catch {}
-                        .launchIn(scope)
+                        .launchIn(this)
                 }
                 .onFailure { e ->
                     _state.update { it.copy(error = e.message, isLoading = false, isStale = it.klineWindow != null) }

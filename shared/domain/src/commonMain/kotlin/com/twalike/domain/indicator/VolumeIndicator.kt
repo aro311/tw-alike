@@ -8,6 +8,7 @@ import com.twalike.domain.model.IndicatorType
 import com.twalike.domain.model.KlineWindow
 
 class VolumeIndicator : Indicator {
+    override val defaultParams = DEFAULT_PARAMS
     override fun compute(window: KlineWindow, config: IndicatorConfig): IndicatorResult {
         val values = window.klines.map { it.volume as Double? }
         return IndicatorResult(

@@ -8,6 +8,7 @@ import com.twalike.domain.model.IndicatorType
 import com.twalike.domain.model.KlineWindow
 
 class RsiIndicator : Indicator {
+    override val defaultParams = DEFAULT_PARAMS
     override fun compute(window: KlineWindow, config: IndicatorConfig): IndicatorResult {
         val period = config.params["period"]?.toIntOrNull() ?: 14
         val closes = window.klines.map { it.close }

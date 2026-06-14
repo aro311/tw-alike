@@ -8,21 +8,12 @@ import com.twalike.domain.model.IndicatorType
 import com.twalike.domain.model.KlineWindow
 
 class EmaIndicator : Indicator {
+    override val defaultParams = DEFAULT_PARAMS
+
     override fun compute(window: KlineWindow, config: IndicatorConfig): IndicatorResult {
         val period = config.params["period"]?.toIntOrNull() ?: 20
         val closes = window.klines.map { it.close }
-        val k = 2.0 / (period + 1)
-        val values = mutableListOf<Double?>()
-        var ema: Double? = null
-        closes.forEachIndexed { i, close ->
-            val prev = ema
-            ema = if (prev == null && i >= period - 1) {
-                closes.subList(0, period).average()
-            } else if (prev != null) {
-                close * k + prev * (1 - k)
-            } else null
-            values.add(if (i < period - 1) null else ema)
-        }
+        val values = computeEmaValues(closes, period)
         return IndicatorResult(
             type = IndicatorType.EMA,
             pane = IndicatorPane.OVERLAY,

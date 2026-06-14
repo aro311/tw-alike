@@ -5,12 +5,12 @@ import shared
 
 @MainActor
 class ChartViewModelWrapper: ObservableObject {
-    private let helper: ChartViewModelHelper
+    private let viewModel: ChartViewModel
     @Published var state: ChartState
     private var task: Task<Void, Never>?
 
     init(symbol: String) {
-        helper = ChartViewModelHelper(symbol: symbol)
+        viewModel = resolveChartViewModel(symbol: symbol)
         state = ChartState(
             symbol: symbol,
             interval: .oneDay,
@@ -25,14 +25,14 @@ class ChartViewModelWrapper: ObservableObject {
 
     func start() {
         task = Task {
-            for await s in helper.viewModel.state {
+            for await s in viewModel.state {
                 self.state = s
             }
         }
     }
 
     func stop() { task?.cancel() }
-    func changeInterval(_ interval: DomainInterval) { helper.viewModel.changeInterval(interval: interval) }
+    func changeInterval(_ interval: DomainInterval) { viewModel.changeInterval(interval: interval) }
 }
 
 struct ChartScreen: View {

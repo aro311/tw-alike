@@ -8,8 +8,10 @@ import com.twalike.domain.repository.MarketRepository
 import com.twalike.domain.repository.WatchlistRepository
 import com.twalike.domain.usecase.ObserveWatchlistUseCase
 import com.twalike.presentation.watchlist.WatchlistViewModel
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -43,14 +45,16 @@ class WatchlistViewModelTest {
         override suspend fun searchSymbols(query: String) = emptyList<com.twalike.domain.model.Symbol>()
     }
 
-    private fun viewModel() = WatchlistViewModel(
+    private fun viewModel(scope: CoroutineScope) = WatchlistViewModel(
         ObserveWatchlistUseCase(fakeWatchlistRepo, fakeMarketRepo),
         fakeWatchlistRepo,
+        scope,
     )
 
     @Test
     fun emitsWatchlistItemsWithTickers() = runTest {
-        viewModel().state.test {
+        val scope = CoroutineScope(UnconfinedTestDispatcher(testScheduler))
+        viewModel(scope).state.test {
             val state = awaitItem()
             assertEquals(1, state.items.size)
             assertEquals("BTCUSDT", state.items[0].entry.symbol)
@@ -61,7 +65,8 @@ class WatchlistViewModelTest {
 
     @Test
     fun reflectsRemovalFromWatchlist() = runTest {
-        val vm = viewModel()
+        val scope = CoroutineScope(UnconfinedTestDispatcher(testScheduler))
+        val vm = viewModel(scope)
         vm.state.test {
             awaitItem() // initial
             vm.removeEntry("BTCUSDT")
@@ -74,7 +79,8 @@ class WatchlistViewModelTest {
     @Test
     fun itemHasNoTickerWhenSymbolNotInStream() = runTest {
         tickerFlow.value = emptyList()
-        viewModel().state.test {
+        val scope = CoroutineScope(UnconfinedTestDispatcher(testScheduler))
+        viewModel(scope).state.test {
             val state = awaitItem()
             assertFalse(state.isLoading)
             assertEquals(null, state.items[0].ticker)

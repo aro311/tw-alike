@@ -12,16 +12,18 @@ import com.twalike.domain.model.IndicatorResult
 import com.twalike.domain.model.IndicatorType
 import com.twalike.domain.model.KlineWindow
 
-class ComputeIndicatorsUseCase {
-    private val registry: Map<IndicatorType, Indicator> = mapOf(
-        IndicatorType.SMA to SmaIndicator(),
-        IndicatorType.EMA to EmaIndicator(),
-        IndicatorType.BOLLINGER_BANDS to BollingerBandsIndicator(),
-        IndicatorType.VOLUME to VolumeIndicator(),
-        IndicatorType.RSI to RsiIndicator(),
-        IndicatorType.MACD to MacdIndicator(),
-    )
+val defaultIndicatorRegistry: Map<IndicatorType, Indicator> = mapOf(
+    IndicatorType.SMA to SmaIndicator(),
+    IndicatorType.EMA to EmaIndicator(),
+    IndicatorType.BOLLINGER_BANDS to BollingerBandsIndicator(),
+    IndicatorType.VOLUME to VolumeIndicator(),
+    IndicatorType.RSI to RsiIndicator(),
+    IndicatorType.MACD to MacdIndicator(),
+)
 
+class ComputeIndicatorsUseCase(
+    private val registry: Map<IndicatorType, Indicator> = defaultIndicatorRegistry,
+) {
     fun execute(window: KlineWindow, configs: List<IndicatorConfig>): List<IndicatorResult> =
         configs
             .filter { it.isVisible }

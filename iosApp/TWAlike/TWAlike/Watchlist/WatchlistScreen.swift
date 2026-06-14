@@ -4,13 +4,13 @@ import shared
 
 @MainActor
 class WatchlistViewModelWrapper: ObservableObject {
-    private let helper = WatchlistViewModelHelper()
+    private let viewModel = resolveWatchlistViewModel()
     @Published var state: WatchlistState = WatchlistState(items: [], isLoading: true, error: nil)
     private var task: Task<Void, Never>?
 
     func start() {
         task = Task {
-            for await s in helper.viewModel.state {
+            for await s in viewModel.state {
                 self.state = s
             }
         }
@@ -19,7 +19,7 @@ class WatchlistViewModelWrapper: ObservableObject {
     func stop() { task?.cancel() }
 
     func removeEntry(symbol: String) {
-        helper.viewModel.removeEntry(symbol: symbol)
+        viewModel.removeEntry(symbol: symbol)
     }
 }
 
