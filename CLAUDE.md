@@ -4,91 +4,71 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-TWAlike — a Kotlin Multiplatform cryptocurrency charting app (TradingView-style). Android (API 29+) and iOS (16+) with native UI per platform. Bundle ID: `com.twalike`.
+TWAlike — a web-based cryptocurrency charting app (TradingView-style). Hosted on GitHub Pages at `https://<username>.github.io/tw-alike/`. Works in any browser on desktop and mobile.
 
-See `CONTEXT.md` for the canonical domain glossary. Use its terms (Symbol, Kline, Ticker, Interval, KlineWindow, WatchlistEntry, Indicator, IndicatorConfig, Drawing, FavoriteInterval, SymbolCatalog) throughout all code and comments.
+See `CONTEXT.md` for the canonical domain glossary. Use its terms (Symbol, Kline, Ticker, Interval, WatchlistEntry, Indicator, IndicatorConfig, Drawing) throughout all code and comments.
 
 ## Commands
 
-> These will be populated once the project is scaffolded. Expected commands:
-
 ```bash
-# Build shared modules
-./gradlew :shared:domain:build
-./gradlew :shared:data:build
-./gradlew :shared:presentation:build
+# Install dependencies
+bun install
 
-# Run all shared tests
-./gradlew :shared:domain:test
-./gradlew :shared:data:test
-./gradlew :shared:presentation:test
+# Dev server
+bun run dev
 
-# Run a single test class
-./gradlew :shared:domain:test --tests "com.twalike.domain.indicator.SmaIndicatorTest"
+# Type-check + production build (output → dist/)
+bun run build
 
-# Build Android app
-./gradlew :androidApp:assembleDebug
+# Preview production build locally
+bun run preview
 
-# Build iOS framework (for Xcode)
-./gradlew :shared:assembleXCFramework
+# Deploy to GitHub Pages (manual)
+# 1. bun run build
+# 2. Push dist/ contents to gh-pages branch, or copy dist/ to docs/ if using docs/ source
 ```
+
+## Stack
+
+| Concern | Choice |
+|---|---|
+| Framework | React 19 + Vite 8 + TypeScript 6 |
+| Package manager | Bun |
+| State | Zustand + localStorage (`persist` middleware) |
+| Charting | TradingView Lightweight Charts v5 |
+| Indicators | `technicalindicators` npm package |
+| Data | Binance `api3.binance.com` REST + `wss://stream.binance.com` WebSocket (no API key) |
+| UI | Tailwind CSS v4 + shadcn/ui |
+| Hosting | GitHub Pages (static, no server) |
 
 ## Architecture
 
-Clean Architecture with three shared KMP modules and two platform UI modules:
-
 ```
-:shared:domain        ← pure Kotlin, zero framework deps
-:shared:data          ← Ktor + SQLDelight, implements domain interfaces
-:shared:presentation  ← StateFlow ViewModels, consumed by platform UIs
-:androidApp           ← Jetpack Compose UI only
-:iosApp               ← SwiftUI UI only (compiled as XCFramework)
+src/
+  types/        ← domain types: Kline, Ticker, Interval, IndicatorConfig, Drawing, WatchlistEntry
+  store/        ← Zustand store (watchlist, symbol settings, UI state) persisted to localStorage
+  hooks/        ← useBinanceTicker (WebSocket), useBinanceKlines (REST + WebSocket)
+  components/
+    chart/      ← ChartPanel (TradingView LW Charts), IntervalPicker
+    watchlist/  ← WatchlistPanel (right-side panel, toggle list/icons)
+    indicators/ ← indicator toggle UI (future)
+    ui/         ← shadcn primitives
+  lib/          ← cn() utility
 ```
 
-**Dependency rule:** `:shared:data` and `:shared:presentation` depend on `:shared:domain`. Platform apps depend on `:shared:presentation`. Nothing in `:shared:domain` imports Ktor, SQLDelight, Android, or iOS APIs.
+## Data flow
 
-### Data flow — Watchlist screen
+**Watchlist prices:** `useBinanceTicker` opens one `wss://stream.binance.com/ws/!miniTicker@arr` WebSocket and filters updates for the symbols in the watchlist.
 
-`WatchlistViewModel` combines two flows: `WatchlistRepository.observeWatchlist()` (SQLDelight) and `MarketRepository.observeTickers()` (Binance `!miniTicker@arr` WebSocket stream) into a single `WatchlistState` StateFlow.
+**Chart data:** `useBinanceKlines` fetches 500 historical candles from `api3.binance.com/api/v3/klines` on mount, then subscribes to `wss://stream.binance.com/ws/<symbol>@kline_<interval>` for live updates. The last candle is updated in-place; a new candle is appended when the timestamp changes.
 
-### Data flow — ChartScreen
+**State persistence:** Zustand `persist` middleware serialises the full store to `localStorage` key `twalike-state`. Swapping to Supabase later = replacing the `storage` adapter in one file (`src/store/index.ts`).
 
-`ChartViewModel` fetches a `KlineWindow` (500 candles) via Binance REST on open, caches it in SQLDelight, subscribes to `MarketRepository.observeKlines(symbol, interval)` WebSocket for live updates, and computes all active Indicator series via `ComputeIndicatorUseCase`. The full state is pushed to the TradingView Lightweight Charts WebView via `evaluateJavascript`.
+## Layout
 
-### WebSocket lifecycle
-
-`MarketRepositoryImpl` exposes streams via `shareIn(SharingStarted.WhileSubscribed(5000))`. Multiple collectors share one connection; it closes 5s after the last unsubscribes and reconnects automatically on the next subscription. ViewModels do not manage connection lifecycle directly.
-
-### Chart rendering
-
-The ChartScreen embeds TradingView Lightweight Charts (JS) in a platform WebView. Kotlin calls named JS functions with JSON payloads: `initChart`, `updateCandle`, `setIndicator`, `setInterval`, `addDrawing`, `removeDrawing`. All payloads use `kotlinx.serialization`.
-
-### Indicator abstraction
-
-`Indicator` is an interface in `:shared:domain`. Built-in V1 implementations: `SmaIndicator`, `EmaIndicator`, `BollingerBandsIndicator`, `VolumeIndicator`, `RsiIndicator`, `MacdIndicator`. Do not hardcode indicator logic into the chart bridge — all indicators go through this interface so V2 Pine Script scripting can be added as another implementation.
-
-### iOS interop
-
-SKIE (Touchlab Gradle plugin) converts all `StateFlow` and suspend functions in the compiled KMP framework to native Swift `AsyncStream`/`async` automatically. Do not write Swift `ObservableObject` wrapper classes — SKIE handles this.
-
-### Dependency injection
-
-Koin. Each shared layer defines its own Koin module. Modules are combined at platform entry points (`Application.onCreate` on Android, `@main` on iOS).
-
-### Offline-first
-
-SQLDelight is the source of truth. Network responses write to the DB; UI reads from the DB. A `isStale: Boolean` in `WatchlistState` and `ChartState` drives the "Last updated X ago" banner when cached data is being shown.
-
-## Testing
-
-- **MockK** — mock only external boundaries (Ktor HTTP/WebSocket client, platform connectivity). Use hand-written fakes for repository interfaces in ViewModel tests.
-- **Turbine** — Flow/StateFlow assertions in ViewModel tests (`test { awaitItem() }`).
-- **kotlinx-coroutines-test** — `runTest` + `TestCoroutineDispatcher` for all coroutine tests.
-- **SQLDelight in-memory driver** — `JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)` for repository integration tests. Do not mock the database.
-- **JS bridge tests** — Jest tests for the HTML/JS chart page, run independently of Kotlin.
+Full-viewport layout (no scroll). Header bar → below splits into chart area (flex-1) + right watchlist panel. Watchlist panel toggles between `list` (w-52) and `icons` (w-14) modes via the `«`/`»` button.
 
 ## Key documentation
 
 - `CONTEXT.md` — domain glossary (canonical terms for all code)
 - `docs/PRD.md` — full product requirements and user stories
-- `docs/adr/` — architectural decision records; read before changing chart rendering, indicator structure, iOS interop, or module layout
