@@ -16,7 +16,7 @@ export function useBinanceTicker(symbols: string[]) {
 
     ws.onmessage = (event: MessageEvent) => {
       const data = JSON.parse(event.data as string) as {
-        s: string; c: string; p: string; P: string; v: string
+        s: string; c: string; o: string; v: string
       }[]
       setTickers((prev) => {
         const next = { ...prev }
@@ -25,8 +25,7 @@ export function useBinanceTicker(symbols: string[]) {
             next[t.s] = {
               symbol: t.s,
               price: t.c,
-              priceChange: t.p,
-              priceChangePercent: t.P,
+              open24h: t.o,
               volume: t.v,
             }
           }

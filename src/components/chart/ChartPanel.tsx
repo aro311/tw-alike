@@ -5,10 +5,11 @@ import type { Kline } from '@/types'
 
 interface Props {
   klines: Kline[]
+  liveCandle: Kline | null
   loading: boolean
 }
 
-export function ChartPanel({ klines, loading }: Props) {
+export function ChartPanel({ klines, liveCandle, loading }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
   const seriesRef = useRef<ISeriesApi<'Candlestick', Time> | null>(null)
@@ -59,6 +60,7 @@ export function ChartPanel({ klines, loading }: Props) {
     }
   }, [])
 
+  // Full reload: only when historical klines change (symbol/interval switch)
   useEffect(() => {
     if (!seriesRef.current || !klines.length) return
     seriesRef.current.setData(
@@ -72,6 +74,18 @@ export function ChartPanel({ klines, loading }: Props) {
     )
     chartRef.current?.timeScale().fitContent()
   }, [klines])
+
+  // Live update: update last candle in-place without touching the viewport
+  useEffect(() => {
+    if (!seriesRef.current || !liveCandle) return
+    seriesRef.current.update({
+      time: liveCandle.time as Time,
+      open: liveCandle.open,
+      high: liveCandle.high,
+      low: liveCandle.low,
+      close: liveCandle.close,
+    })
+  }, [liveCandle])
 
   return (
     <div className="relative flex-1 min-w-0 min-h-0">

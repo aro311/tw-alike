@@ -4,9 +4,10 @@ import { Badge } from '@/components/ui/badge'
 
 interface Props {
   tickers: Record<string, Ticker>
+  dailyOpens: Record<string, number>
 }
 
-export function WatchlistPanel({ tickers }: Props) {
+export function WatchlistPanel({ tickers, dailyOpens }: Props) {
   const { watchlist, activeSymbol, watchlistPanelMode, setActiveSymbol, setWatchlistPanelMode } =
     useAppStore()
 
@@ -40,7 +41,10 @@ export function WatchlistPanel({ tickers }: Props) {
       <div className="flex-1 overflow-y-auto">
         {watchlist.map((entry) => {
           const ticker = tickers[entry.symbol]
-          const change = ticker ? parseFloat(ticker.priceChangePercent) : null
+          const dailyOpen = dailyOpens[entry.symbol]
+          const change = ticker && dailyOpen
+            ? (parseFloat(ticker.price) - dailyOpen) / dailyOpen * 100
+            : null
           const isPositive = change !== null && change >= 0
           const isActive = entry.symbol === activeSymbol
           const base = entry.symbol.replace('USDT', '').replace('BTC', '')

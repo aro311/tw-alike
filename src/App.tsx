@@ -1,7 +1,9 @@
+import { useEffect } from 'react'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { useAppStore } from '@/store'
 import { useBinanceTicker } from '@/hooks/useBinanceTicker'
 import { useBinanceKlines } from '@/hooks/useBinanceKlines'
+import { useDailyOpen } from '@/hooks/useDailyOpen'
 import { ChartPanel } from '@/components/chart/ChartPanel'
 import { IntervalPicker } from '@/components/chart/IntervalPicker'
 import { WatchlistPanel } from '@/components/watchlist/WatchlistPanel'
@@ -10,12 +12,23 @@ export default function App() {
   const { activeSymbol, watchlist, getSymbolSettings, setInterval } = useAppStore()
   const symbols = watchlist.map((e) => e.symbol)
   const tickers = useBinanceTicker(symbols)
+  const dailyOpens = useDailyOpen(symbols)
   const settings = getSymbolSettings(activeSymbol)
-  const { klines, loading } = useBinanceKlines(activeSymbol, settings.interval)
+  const { klines, liveCandle, loading } = useBinanceKlines(activeSymbol, settings.interval)
 
   const ticker = tickers[activeSymbol]
-  const change = ticker ? parseFloat(ticker.priceChangePercent) : null
+  const dailyOpen = dailyOpens[activeSymbol]
+  const change = ticker && dailyOpen
+    ? (parseFloat(ticker.price) - dailyOpen) / dailyOpen * 100
+    : null
   const isPositive = change !== null && change >= 0
+
+  useEffect(() => {
+    if (!ticker) { document.title = 'TWAlike'; return }
+    const symbol = activeSymbol.replace('USDT', '')
+    const price = parseFloat(ticker.price).toLocaleString(undefined, { maximumFractionDigits: 2 })
+    document.title = `${symbol} $${price} | TWAlike`
+  }, [ticker, activeSymbol])
 
   return (
     <TooltipProvider>
@@ -47,11 +60,11 @@ export default function App() {
               value={settings.interval}
               onChange={(interval) => setInterval(activeSymbol, interval)}
             />
-            <ChartPanel klines={klines} loading={loading} />
+            <ChartPanel klines={klines} liveCandle={liveCandle} loading={loading} />
           </div>
 
           {/* Watchlist */}
-          <WatchlistPanel tickers={tickers} />
+          <WatchlistPanel tickers={tickers} dailyOpens={dailyOpens} />
         </div>
       </div>
     </TooltipProvider>

@@ -9,9 +9,8 @@ export interface Kline {
 
 export interface Ticker {
   symbol: string
-  price: string
-  priceChange: string
-  priceChangePercent: string
+  price: string   // close price from miniTicker `c`
+  open24h: string // 24h rolling open from miniTicker `o` (not day open)
   volume: string
 }
 
