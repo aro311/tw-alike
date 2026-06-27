@@ -25,10 +25,16 @@ export default function App() {
 
   useEffect(() => {
     if (!ticker) { document.title = 'TWAlike'; return }
-    const symbol = activeSymbol.replace('USDT', '')
+    const symbolDisplay = activeMarket === 'futures' ? `${activeSymbol}.P` : activeSymbol
     const price = parseFloat(ticker.price).toLocaleString(undefined, { maximumFractionDigits: 2 })
-    document.title = `${symbol} $${price} | TWAlike`
-  }, [ticker, activeSymbol])
+    if (change !== null) {
+      const arrow = isPositive ? '▲' : '▼'
+      const pct = `${isPositive ? '+' : ''}${change.toFixed(2)}%`
+      document.title = `${symbolDisplay} ${price} ${arrow} ${pct}`
+    } else {
+      document.title = `${symbolDisplay} ${price}`
+    }
+  }, [ticker, activeSymbol, activeMarket, change, isPositive])
 
   return (
     <TooltipProvider>
