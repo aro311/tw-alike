@@ -36,9 +36,12 @@ export interface Drawing {
   points: { time: number; value: number }[]
 }
 
+export type Market = 'spot' | 'futures'
+
 export interface WatchlistEntry {
   symbol: string
   addedAt: number
+  market: Market
 }
 
 export interface SymbolSettings {

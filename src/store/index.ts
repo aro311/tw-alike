@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { Interval, IndicatorConfig, Drawing, WatchlistEntry, SymbolSettings } from '@/types'
+import type { Interval, IndicatorConfig, Drawing, WatchlistEntry, SymbolSettings, Market } from '@/types'
 
 const DEFAULT_INDICATORS: IndicatorConfig[] = [
   { type: 'SMA', enabled: false, period: 20 },
@@ -12,11 +12,11 @@ const DEFAULT_INDICATORS: IndicatorConfig[] = [
 ]
 
 const DEFAULT_WATCHLIST: WatchlistEntry[] = [
-  { symbol: 'BTCUSDT', addedAt: Date.now() },
-  { symbol: 'ETHUSDT', addedAt: Date.now() },
-  { symbol: 'BNBUSDT', addedAt: Date.now() },
-  { symbol: 'SOLUSDT', addedAt: Date.now() },
-  { symbol: 'XRPUSDT', addedAt: Date.now() },
+  { symbol: 'BTCUSDT', addedAt: Date.now(), market: 'spot' },
+  { symbol: 'ETHUSDT', addedAt: Date.now(), market: 'spot' },
+  { symbol: 'BNBUSDT', addedAt: Date.now(), market: 'spot' },
+  { symbol: 'SOLUSDT', addedAt: Date.now(), market: 'spot' },
+  { symbol: 'XRPUSDT', addedAt: Date.now(), market: 'spot' },
 ]
 
 interface AppState {
@@ -26,7 +26,7 @@ interface AppState {
   watchlistPanelMode: 'list' | 'icons' | 'hidden'
 
   setActiveSymbol: (symbol: string) => void
-  addToWatchlist: (symbol: string) => void
+  addToWatchlist: (symbol: string, market: Market) => void
   removeFromWatchlist: (symbol: string) => void
   reorderWatchlist: (from: number, to: number) => void
   setWatchlistPanelMode: (mode: 'list' | 'icons' | 'hidden') => void
@@ -55,11 +55,11 @@ export const useAppStore = create<AppState>()(
 
       setActiveSymbol: (symbol) => set({ activeSymbol: symbol }),
 
-      addToWatchlist: (symbol) =>
+      addToWatchlist: (symbol, market) =>
         set((s) => ({
           watchlist: s.watchlist.some((e) => e.symbol === symbol)
             ? s.watchlist
-            : [...s.watchlist, { symbol, addedAt: Date.now() }],
+            : [...s.watchlist, { symbol, market, addedAt: Date.now() }],
         })),
 
       removeFromWatchlist: (symbol) =>

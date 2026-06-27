@@ -10,11 +10,11 @@ import { WatchlistPanel } from '@/components/watchlist/WatchlistPanel'
 
 export default function App() {
   const { activeSymbol, watchlist, getSymbolSettings, setInterval } = useAppStore()
-  const symbols = watchlist.map((e) => e.symbol)
-  const tickers = useBinanceTicker(symbols)
-  const dailyOpens = useDailyOpen(symbols)
+  const tickers = useBinanceTicker(watchlist)
+  const dailyOpens = useDailyOpen(watchlist)
   const settings = getSymbolSettings(activeSymbol)
-  const { klines, liveCandle, loading } = useBinanceKlines(activeSymbol, settings.interval)
+  const activeMarket = watchlist.find((e) => e.symbol === activeSymbol)?.market ?? 'spot'
+  const { klines, liveCandle, loading } = useBinanceKlines(activeSymbol, settings.interval, activeMarket)
 
   const ticker = tickers[activeSymbol]
   const dailyOpen = dailyOpens[activeSymbol]
@@ -40,6 +40,9 @@ export default function App() {
           <span className="text-sm font-semibold text-white">
             {activeSymbol.replace('USDT', '/USDT')}
           </span>
+          {activeMarket === 'futures' && (
+            <span className="text-xs font-medium text-yellow-400 bg-yellow-400/10 px-1.5 py-0.5 rounded">PERP</span>
+          )}
           {ticker && (
             <>
               <span className="text-sm font-medium text-white">
