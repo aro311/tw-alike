@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite'
+import { defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import path from 'path'
@@ -7,6 +7,13 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   base: '/tw-alike/',
   resolve: {
+    alias: {
+      '@': path.resolve(__dirname, './src'),
+    },
+  },
+  test: {
+    environment: 'happy-dom',
+    globals: true,
     alias: {
       '@': path.resolve(__dirname, './src'),
     },

@@ -7,9 +7,10 @@ interface Props {
   klines: Kline[]
   liveCandle: Kline | null
   loading: boolean
+  onChartReady?: (chart: IChartApi) => void
 }
 
-export function ChartPanel({ klines, liveCandle, loading }: Props) {
+export function ChartPanel({ klines, liveCandle, loading, onChartReady }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
   const seriesRef = useRef<ISeriesApi<'Candlestick', Time> | null>(null)
@@ -43,6 +44,7 @@ export function ChartPanel({ klines, liveCandle, loading }: Props) {
 
     chartRef.current = chart
     seriesRef.current = series
+    onChartReady?.(chart)
 
     const observer = new ResizeObserver(() => {
       if (containerRef.current) {
@@ -58,7 +60,7 @@ export function ChartPanel({ klines, liveCandle, loading }: Props) {
       observer.disconnect()
       chart.remove()
     }
-  }, [])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Full reload: only when historical klines change (symbol/interval switch)
   useEffect(() => {

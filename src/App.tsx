@@ -1,4 +1,5 @@
-import { useEffect } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
+import type { IChartApi, LogicalRange } from 'lightweight-charts'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { useAppStore } from '@/store'
 import { useBinanceTicker } from '@/hooks/useBinanceTicker'
@@ -6,7 +7,11 @@ import { useBinanceKlines } from '@/hooks/useBinanceKlines'
 import { useDailyOpen } from '@/hooks/useDailyOpen'
 import { ChartPanel } from '@/components/chart/ChartPanel'
 import { IntervalPicker } from '@/components/chart/IntervalPicker'
+import { RsiPanel } from '@/components/chart/RsiPanel'
 import { WatchlistPanel } from '@/components/watchlist/WatchlistPanel'
+
+const RSI_MIN_PX = 80
+const RSI_DEFAULT_RATIO = 0.28 // RSI panel takes 28% of chart area height
 
 export default function App() {
   const { activeSymbol, watchlist, getSymbolSettings, setInterval } = useAppStore()
@@ -35,6 +40,63 @@ export default function App() {
       document.title = `${symbolDisplay} ${price}`
     }
   }, [ticker, activeSymbol, activeMarket, change, isPositive])
+
+  // ── RSI panel drag-to-resize ─────────────────────────────────────────────
+  const chartAreaRef = useRef<HTMLDivElement>(null)
+  const [rsiRatio, setRsiRatio] = useState(RSI_DEFAULT_RATIO)
+  const dragging = useRef(false)
+
+  const onDividerMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    dragging.current = true
+
+    const onMove = (ev: MouseEvent) => {
+      if (!dragging.current || !chartAreaRef.current) return
+      const rect = chartAreaRef.current.getBoundingClientRect()
+      const totalH = rect.height
+      const fromBottom = rect.bottom - ev.clientY
+      const ratio = Math.min(Math.max(fromBottom / totalH, RSI_MIN_PX / totalH), 0.6)
+      setRsiRatio(ratio)
+    }
+
+    const onUp = () => {
+      dragging.current = false
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+  }, [])
+
+  // ── Time scale sync: main → RSI ─────────────────────────────────────────
+  const mainChartRef = useRef<IChartApi | null>(null)
+  const rsiChartRef = useRef<IChartApi | null>(null)
+  const [syncRange, setSyncRange] = useState<LogicalRange | null>(null)
+  const syncing = useRef(false)
+
+  const handleMainChartReady = useCallback((chart: IChartApi) => {
+    mainChartRef.current = chart
+    chart.timeScale().subscribeVisibleLogicalRangeChange((range) => {
+      if (syncing.current || !range) return
+      syncing.current = true
+      setSyncRange(range)
+      rsiChartRef.current?.timeScale().setVisibleLogicalRange(range)
+      syncing.current = false
+    })
+  }, [])
+
+  const handleRsiChartReady = useCallback((chart: IChartApi) => {
+    rsiChartRef.current = chart
+    chart.timeScale().subscribeVisibleLogicalRangeChange((range) => {
+      if (syncing.current || !range) return
+      syncing.current = true
+      mainChartRef.current?.timeScale().setVisibleLogicalRange(range)
+      syncing.current = false
+    })
+  }, [])
+
+  const rsiConfig = settings.indicators.find((i) => i.type === 'RSI')
 
   return (
     <TooltipProvider>
@@ -69,7 +131,38 @@ export default function App() {
               value={settings.interval}
               onChange={(interval) => setInterval(activeSymbol, interval)}
             />
-            <ChartPanel klines={klines} liveCandle={liveCandle} loading={loading} />
+
+            {/* Candlestick + RSI stacked */}
+            <div ref={chartAreaRef} className="flex flex-col flex-1 min-h-0">
+              {/* Candlestick chart */}
+              <div style={{ flex: `1 1 ${(1 - rsiRatio) * 100}%` }} className="min-h-0 flex flex-col">
+                <ChartPanel
+                  klines={klines}
+                  liveCandle={liveCandle}
+                  loading={loading}
+                  onChartReady={handleMainChartReady}
+                />
+              </div>
+
+              {/* Drag divider */}
+              <div
+                onMouseDown={onDividerMouseDown}
+                className="h-1 bg-slate-800 hover:bg-blue-600/50 cursor-row-resize shrink-0 transition-colors"
+              />
+
+              {/* RSI panel */}
+              <div style={{ flex: `0 0 ${rsiRatio * 100}%` }} className="min-h-0 flex flex-col">
+                <RsiPanel
+                  klines={klines}
+                  liveCandle={liveCandle}
+                  period={rsiConfig?.period ?? 14}
+                  overbought={rsiConfig?.overbought ?? 70}
+                  oversold={rsiConfig?.oversold ?? 30}
+                  onChartReady={handleRsiChartReady}
+                  syncRange={syncRange}
+                />
+              </div>
+            </div>
           </div>
 
           {/* Watchlist */}
