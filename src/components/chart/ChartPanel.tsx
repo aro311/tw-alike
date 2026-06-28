@@ -35,11 +35,11 @@ export function ChartPanel({ klines, liveCandle, loading, onChartReady }: Props)
     })
 
     const series = chart.addSeries(CandlestickSeries, {
-      upColor: '#26a69a',
-      downColor: '#ef5350',
+      upColor: '#ffffff',
+      downColor: '#808080',
       borderVisible: false,
-      wickUpColor: '#26a69a',
-      wickDownColor: '#ef5350',
+      wickUpColor: '#ffffff',
+      wickDownColor: '#808080',
     })
 
     chartRef.current = chart
