@@ -21,6 +21,8 @@ export type Interval =
 
 export type IndicatorType = 'SMA' | 'EMA' | 'BB' | 'RSI' | 'MACD' | 'VOLUME'
 
+export type VwapAnchor = 'D' | 'W' | 'M' | '12M'
+
 export interface IndicatorConfig {
   type: IndicatorType
   enabled: boolean

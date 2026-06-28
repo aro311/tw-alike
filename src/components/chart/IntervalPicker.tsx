@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import type { Interval } from '@/types'
 
 const INTERVALS: { value: Interval; label: string }[] = [
@@ -16,11 +17,12 @@ const INTERVALS: { value: Interval; label: string }[] = [
 interface Props {
   value: Interval
   onChange: (interval: Interval) => void
+  rightSlot?: ReactNode
 }
 
-export function IntervalPicker({ value, onChange }: Props) {
+export function IntervalPicker({ value, onChange, rightSlot }: Props) {
   return (
-    <div className="flex gap-1 px-3 py-2 border-b border-slate-800">
+    <div className="flex items-center gap-1 px-3 py-2 border-b border-slate-800">
       {INTERVALS.map(({ value: iv, label }) => (
         <button
           key={iv}
@@ -34,6 +36,12 @@ export function IntervalPicker({ value, onChange }: Props) {
           {label}
         </button>
       ))}
+      {rightSlot && (
+        <>
+          <div className="w-px h-4 bg-slate-700 mx-1 shrink-0" />
+          {rightSlot}
+        </>
+      )}
     </div>
   )
 }

@@ -7,6 +7,7 @@ import { useBinanceKlines } from '@/hooks/useBinanceKlines'
 import { useDailyOpen } from '@/hooks/useDailyOpen'
 import { ChartPanel } from '@/components/chart/ChartPanel'
 import { IntervalPicker } from '@/components/chart/IntervalPicker'
+import { VwapSelector } from '@/components/chart/VwapSelector'
 import { RsiPanel } from '@/components/chart/RsiPanel'
 import { WatchlistPanel } from '@/components/watchlist/WatchlistPanel'
 
@@ -14,7 +15,7 @@ const RSI_MIN_PX = 80
 const RSI_DEFAULT_RATIO = 0.28 // RSI panel takes 28% of chart area height
 
 export default function App() {
-  const { activeSymbol, watchlist, getSymbolSettings, setInterval } = useAppStore()
+  const { activeSymbol, watchlist, getSymbolSettings, setInterval, vwapEnabled, vwapAnchor, setVwapEnabled, setVwapAnchor } = useAppStore()
   const tickers = useBinanceTicker(watchlist)
   const dailyOpens = useDailyOpen(watchlist)
   const settings = getSymbolSettings(activeSymbol)
@@ -130,6 +131,14 @@ export default function App() {
             <IntervalPicker
               value={settings.interval}
               onChange={(interval) => setInterval(activeSymbol, interval)}
+              rightSlot={
+                <VwapSelector
+                  enabled={vwapEnabled}
+                  anchor={vwapAnchor}
+                  onToggle={() => setVwapEnabled(!vwapEnabled)}
+                  onAnchorChange={setVwapAnchor}
+                />
+              }
             />
 
             {/* Candlestick + RSI stacked */}
@@ -141,6 +150,8 @@ export default function App() {
                   liveCandle={liveCandle}
                   loading={loading}
                   onChartReady={handleMainChartReady}
+                  vwapEnabled={vwapEnabled}
+                  vwapAnchor={vwapAnchor}
                 />
               </div>
 

@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { Interval, IndicatorConfig, Drawing, WatchlistEntry, SymbolSettings, Market } from '@/types'
+import type { Interval, IndicatorConfig, Drawing, WatchlistEntry, SymbolSettings, Market, VwapAnchor } from '@/types'
 
 const DEFAULT_INDICATORS: IndicatorConfig[] = [
   { type: 'SMA', enabled: false, period: 20 },
@@ -24,8 +24,12 @@ interface AppState {
   activeSymbol: string
   symbolSettings: Record<string, SymbolSettings>
   watchlistPanelMode: 'list' | 'icons' | 'hidden'
+  vwapEnabled: boolean
+  vwapAnchor: VwapAnchor
 
   setActiveSymbol: (symbol: string) => void
+  setVwapEnabled: (enabled: boolean) => void
+  setVwapAnchor: (anchor: VwapAnchor) => void
   addToWatchlist: (symbol: string, market: Market) => void
   removeFromWatchlist: (symbol: string) => void
   reorderWatchlist: (from: number, to: number) => void
@@ -52,8 +56,12 @@ export const useAppStore = create<AppState>()(
       activeSymbol: 'BTCUSDT',
       symbolSettings: {},
       watchlistPanelMode: 'list',
+      vwapEnabled: true,
+      vwapAnchor: 'D',
 
       setActiveSymbol: (symbol) => set({ activeSymbol: symbol }),
+      setVwapEnabled: (vwapEnabled) => set({ vwapEnabled }),
+      setVwapAnchor: (vwapAnchor) => set({ vwapAnchor }),
 
       addToWatchlist: (symbol, market) =>
         set((s) => ({

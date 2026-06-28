@@ -1,19 +1,23 @@
 import { useEffect, useRef } from 'react'
-import { createChart, ColorType, CrosshairMode, CandlestickSeries } from 'lightweight-charts'
+import { createChart, ColorType, CrosshairMode, CandlestickSeries, LineSeries } from 'lightweight-charts'
 import type { IChartApi, ISeriesApi, Time } from 'lightweight-charts'
-import type { Kline } from '@/types'
+import type { Kline, VwapAnchor } from '@/types'
+import { computeVwap, computeVwapLive } from '@/lib/vwap'
 
 interface Props {
   klines: Kline[]
   liveCandle: Kline | null
   loading: boolean
   onChartReady?: (chart: IChartApi) => void
+  vwapEnabled: boolean
+  vwapAnchor: VwapAnchor
 }
 
-export function ChartPanel({ klines, liveCandle, loading, onChartReady }: Props) {
+export function ChartPanel({ klines, liveCandle, loading, onChartReady, vwapEnabled, vwapAnchor }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
   const seriesRef = useRef<ISeriesApi<'Candlestick', Time> | null>(null)
+  const vwapRef = useRef<ISeriesApi<'Line', Time> | null>(null)
 
   useEffect(() => {
     if (!containerRef.current) return
@@ -42,8 +46,16 @@ export function ChartPanel({ klines, liveCandle, loading, onChartReady }: Props)
       wickDownColor: '#808080',
     })
 
+    const vwap = chart.addSeries(LineSeries, {
+      color: '#2962FF',
+      lineWidth: 1,
+      priceLineVisible: false,
+      lastValueVisible: true,
+    })
+
     chartRef.current = chart
     seriesRef.current = series
+    vwapRef.current = vwap
     onChartReady?.(chart)
 
     const observer = new ResizeObserver(() => {
@@ -77,6 +89,21 @@ export function ChartPanel({ klines, liveCandle, loading, onChartReady }: Props)
     chartRef.current?.timeScale().fitContent()
   }, [klines])
 
+  // VWAP full reload: recompute when klines, anchor, or enabled changes
+  useEffect(() => {
+    if (!vwapRef.current || !klines.length) return
+    if (!vwapEnabled) {
+      vwapRef.current.setData([])
+      return
+    }
+    const values = computeVwap(klines, vwapAnchor)
+    vwapRef.current.setData(
+      klines
+        .map((k, i) => ({ time: k.time as Time, value: values[i] }))
+        .filter((d): d is { time: Time; value: number } => d.value !== null)
+    )
+  }, [klines, vwapEnabled, vwapAnchor])
+
   // Live update: update last candle in-place without touching the viewport
   useEffect(() => {
     if (!seriesRef.current || !liveCandle) return
@@ -87,7 +114,10 @@ export function ChartPanel({ klines, liveCandle, loading, onChartReady }: Props)
       low: liveCandle.low,
       close: liveCandle.close,
     })
-  }, [liveCandle])
+    if (!vwapRef.current || !vwapEnabled || !klines.length) return
+    const value = computeVwapLive(klines, liveCandle, vwapAnchor)
+    if (value !== null) vwapRef.current.update({ time: liveCandle.time as Time, value })
+  }, [liveCandle]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="relative flex-1 min-w-0 min-h-0">
