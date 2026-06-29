@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createChart, ColorType, CrosshairMode, LineSeries } from 'lightweight-charts'
 import type { IChartApi, ISeriesApi, Time, LogicalRange } from 'lightweight-charts'
 import type { Kline } from '@/types'
@@ -30,6 +30,7 @@ export function RsiPanel({ klines, liveCandle, period, overbought, oversold, onC
   const osRef = useRef<LineRef | null>(null)
   const ob80Ref = useRef<LineRef | null>(null)
   const os20Ref = useRef<LineRef | null>(null)
+  const [hoverValues, setHoverValues] = useState<{ rsi: number | null; ema: number | null; wma: number | null }>({ rsi: null, ema: null, wma: null })
 
   useEffect(() => {
     if (!containerRef.current) return
@@ -108,6 +109,21 @@ export function RsiPanel({ klines, liveCandle, period, overbought, oversold, onC
       priceLineVisible: false,
       lastValueVisible: false,
       crosshairMarkerVisible: false,
+    })
+
+    chart.subscribeCrosshairMove((param) => {
+      if (!param.time || !param.seriesData) {
+        setHoverValues({ rsi: null, ema: null, wma: null })
+        return
+      }
+      const rsiPoint = rsiRef.current ? param.seriesData.get(rsiRef.current) : undefined
+      const emaPoint = emaRef.current ? param.seriesData.get(emaRef.current) : undefined
+      const wmaPoint = wmaRef.current ? param.seriesData.get(wmaRef.current) : undefined
+      setHoverValues({
+        rsi: rsiPoint && 'value' in rsiPoint ? (rsiPoint.value as number) : null,
+        ema: emaPoint && 'value' in emaPoint ? (emaPoint.value as number) : null,
+        wma: wmaPoint && 'value' in wmaPoint ? (wmaPoint.value as number) : null,
+      })
     })
 
     chartRef.current = chart
@@ -201,9 +217,9 @@ export function RsiPanel({ klines, liveCandle, period, overbought, oversold, onC
   return (
     <div className="relative flex-1 min-h-0 min-w-0">
       <span className="absolute top-1 left-2 text-[10px] text-slate-500 z-10 pointer-events-none select-none">
-        RSI({period})
-        <span className="text-yellow-400 ml-1">EMA{EMA_PERIOD}</span>
-        <span className="text-red-400 ml-1">WMA{WMA_PERIOD}</span>
+        RSI({period}){hoverValues.rsi !== null && <span className="ml-0.5">{hoverValues.rsi.toFixed(2)}</span>}
+        <span className="text-yellow-400 ml-1">EMA{EMA_PERIOD}{hoverValues.ema !== null && <span className="ml-0.5">{hoverValues.ema.toFixed(2)}</span>}</span>
+        <span className="text-red-400 ml-1">WMA{WMA_PERIOD}{hoverValues.wma !== null && <span className="ml-0.5">{hoverValues.wma.toFixed(2)}</span>}</span>
       </span>
       <div ref={containerRef} className="w-full h-full" />
     </div>
