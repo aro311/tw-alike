@@ -28,6 +28,8 @@ export function RsiPanel({ klines, liveCandle, period, overbought, oversold, onC
   const wmaRef = useRef<LineRef | null>(null)
   const obRef = useRef<LineRef | null>(null)
   const osRef = useRef<LineRef | null>(null)
+  const ob80Ref = useRef<LineRef | null>(null)
+  const os20Ref = useRef<LineRef | null>(null)
 
   useEffect(() => {
     if (!containerRef.current) return
@@ -90,6 +92,24 @@ export function RsiPanel({ klines, liveCandle, period, overbought, oversold, onC
       crosshairMarkerVisible: false,
     })
 
+    ob80Ref.current = chart.addSeries(LineSeries, {
+      color: '#ef5350',
+      lineWidth: 1,
+      lineStyle: 2,
+      priceLineVisible: false,
+      lastValueVisible: false,
+      crosshairMarkerVisible: false,
+    })
+
+    os20Ref.current = chart.addSeries(LineSeries, {
+      color: '#26a69a',
+      lineWidth: 1,
+      lineStyle: 2,
+      priceLineVisible: false,
+      lastValueVisible: false,
+      crosshairMarkerVisible: false,
+    })
+
     chartRef.current = chart
     onChartReady(chart)
 
@@ -143,6 +163,8 @@ export function RsiPanel({ klines, liveCandle, period, overbought, oversold, onC
 
     obRef.current?.setData(klines.map((k) => ({ time: k.time as Time, value: overbought })))
     osRef.current?.setData(klines.map((k) => ({ time: k.time as Time, value: oversold })))
+    ob80Ref.current?.setData(klines.map((k) => ({ time: k.time as Time, value: 80 })))
+    os20Ref.current?.setData(klines.map((k) => ({ time: k.time as Time, value: 20 })))
   }, [klines, period, overbought, oversold])
 
   // Live candle update
@@ -166,6 +188,8 @@ export function RsiPanel({ klines, liveCandle, period, overbought, oversold, onC
 
     obRef.current?.update({ time: liveCandle.time as Time, value: overbought })
     osRef.current?.update({ time: liveCandle.time as Time, value: oversold })
+    ob80Ref.current?.update({ time: liveCandle.time as Time, value: 80 })
+    os20Ref.current?.update({ time: liveCandle.time as Time, value: 20 })
   }, [liveCandle]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Sync time scale from main chart
