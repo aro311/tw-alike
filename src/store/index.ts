@@ -26,10 +26,14 @@ interface AppState {
   watchlistPanelMode: 'list' | 'icons' | 'hidden'
   vwapEnabled: boolean
   vwapAnchor: VwapAnchor
+  blEnabled: boolean
+  blSlowEnabled: boolean
 
   setActiveSymbol: (symbol: string) => void
   setVwapEnabled: (enabled: boolean) => void
   setVwapAnchor: (anchor: VwapAnchor) => void
+  setBlEnabled: (enabled: boolean) => void
+  setBlSlowEnabled: (enabled: boolean) => void
   addToWatchlist: (symbol: string, market: Market) => void
   removeFromWatchlist: (symbol: string) => void
   reorderWatchlist: (from: number, to: number) => void
@@ -58,10 +62,14 @@ export const useAppStore = create<AppState>()(
       watchlistPanelMode: 'list',
       vwapEnabled: true,
       vwapAnchor: 'D',
+      blEnabled: true,
+      blSlowEnabled: true,
 
       setActiveSymbol: (symbol) => set({ activeSymbol: symbol }),
       setVwapEnabled: (vwapEnabled) => set({ vwapEnabled }),
       setVwapAnchor: (vwapAnchor) => set({ vwapAnchor }),
+      setBlEnabled: (blEnabled) => set({ blEnabled }),
+      setBlSlowEnabled: (blSlowEnabled) => set({ blSlowEnabled }),
 
       addToWatchlist: (symbol, market) =>
         set((s) => ({

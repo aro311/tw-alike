@@ -8,6 +8,7 @@ import { useDailyOpen } from '@/hooks/useDailyOpen'
 import { ChartPanel } from '@/components/chart/ChartPanel'
 import { IntervalPicker } from '@/components/chart/IntervalPicker'
 import { VwapSelector } from '@/components/chart/VwapSelector'
+import { BaselineToggle } from '@/components/chart/BaselineToggle'
 import { RsiPanel } from '@/components/chart/RsiPanel'
 import { WatchlistPanel } from '@/components/watchlist/WatchlistPanel'
 
@@ -15,7 +16,7 @@ const RSI_MIN_PX = 80
 const RSI_DEFAULT_RATIO = 0.28 // RSI panel takes 28% of chart area height
 
 export default function App() {
-  const { activeSymbol, watchlist, getSymbolSettings, setInterval, vwapEnabled, vwapAnchor, setVwapEnabled, setVwapAnchor } = useAppStore()
+  const { activeSymbol, watchlist, getSymbolSettings, setInterval, vwapEnabled, vwapAnchor, setVwapEnabled, setVwapAnchor, blEnabled, blSlowEnabled, setBlEnabled, setBlSlowEnabled } = useAppStore()
   const tickers = useBinanceTicker(watchlist)
   const dailyOpens = useDailyOpen(watchlist)
   const settings = getSymbolSettings(activeSymbol)
@@ -132,12 +133,20 @@ export default function App() {
               value={settings.interval}
               onChange={(interval) => setInterval(activeSymbol, interval)}
               rightSlot={
-                <VwapSelector
-                  enabled={vwapEnabled}
-                  anchor={vwapAnchor}
-                  onToggle={() => setVwapEnabled(!vwapEnabled)}
-                  onAnchorChange={setVwapAnchor}
-                />
+                <div className="flex items-center gap-2">
+                  <VwapSelector
+                    enabled={vwapEnabled}
+                    anchor={vwapAnchor}
+                    onToggle={() => setVwapEnabled(!vwapEnabled)}
+                    onAnchorChange={setVwapAnchor}
+                  />
+                  <BaselineToggle
+                    enabled={blEnabled}
+                    slowEnabled={blSlowEnabled}
+                    onToggle={() => setBlEnabled(!blEnabled)}
+                    onSlowToggle={() => setBlSlowEnabled(!blSlowEnabled)}
+                  />
+                </div>
               }
             />
 
@@ -152,6 +161,8 @@ export default function App() {
                   onChartReady={handleMainChartReady}
                   vwapEnabled={vwapEnabled}
                   vwapAnchor={vwapAnchor}
+                  blEnabled={blEnabled}
+                  blSlowEnabled={blSlowEnabled}
                 />
               </div>
 
