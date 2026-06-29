@@ -52,7 +52,7 @@ export function ChartPanel({ klines, liveCandle, loading, onChartReady, vwapEnab
     })
 
     const vwap = chart.addSeries(LineSeries, {
-      color: '#2962FF',
+      color: '#00BCD4',
       lineWidth: 1,
       priceLineVisible: false,
       lastValueVisible: true,

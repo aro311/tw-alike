@@ -61,7 +61,7 @@ export const useAppStore = create<AppState>()(
       symbolSettings: {},
       watchlistPanelMode: 'list',
       vwapEnabled: true,
-      vwapAnchor: 'D',
+      vwapAnchor: 'W',
       blEnabled: true,
       blSlowEnabled: true,
 
