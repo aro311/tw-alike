@@ -1,8 +1,6 @@
 # TWAlike
 
-A Kotlin Multiplatform app for cryptocurrency charting, inspired by TradingView and Binance. Targets Android (API 29+) and iOS (16+) from a single shared codebase with native UI per platform (Jetpack Compose on Android, SwiftUI on iOS). Focuses on real-time price data, candlestick charts, and technical indicators.
-
-Bundle ID: `com.twalike`
+A web-based cryptocurrency charting app inspired by TradingView. Built with React + TypeScript, hosted on GitHub Pages. Focuses on real-time price data, candlestick charts, technical indicators, and user drawing tools.
 
 ## Language
 
@@ -42,8 +40,14 @@ _Avoid_: Indicator settings, indicator parameters
 **FavoriteInterval**: An Interval the user has starred for quick access in the interval picker. Global across all Symbols.
 _Avoid_: Pinned interval, saved interval
 
-**Drawing**: A user-placed annotation on the Chart — one of: horizontal line, trend line, or Fibonacci retracement. Persisted per Symbol in SQLDelight.
-_Avoid_: Annotation, markup, line
+**Drawing**: A user-placed annotation on the Chart. Five types: HorizontalRay (single price level extending right forever), Fibonacci (retracement grid between two price points), PriceRange (full-width horizontal band between two price levels), DateRange (full-height vertical band between two timestamps), Brush (freehand path). Each Drawing carries a color and line width chosen at draw time. Persisted per Symbol in localStorage.
+_Avoid_: Annotation, markup, line, overlay
+
+**DrawingTool**: The currently active drawing mode. One of: Cursor (navigate mode, no drawing), HorizontalRay, Fibonacci, PriceRange, DateRange, Brush. Resets to Cursor when the active Symbol changes.
+_Avoid_: Drawing mode, active tool, pen mode
+
+**ControlPoint**: A draggable handle that appears on a selected Drawing at each defining coordinate. Dragging a ControlPoint repositions that endpoint of the Drawing without affecting other endpoints. Brush drawings have no ControlPoints — they drag as a whole.
+_Avoid_: Handle, anchor, vertex
 
 ### Navigation
 
@@ -71,4 +75,7 @@ _Avoid_: Coin list, exchange info, symbol list
 > **Domain expert:** The Watchlist shows the last-known Ticker prices greyed out. The ChartScreen shows the cached KlineWindow with a stale timestamp banner. WebSocket reconnects automatically when connectivity returns.
 >
 > **Dev:** How does a user add a coin not in the default Watchlist?
-> **Domain expert:** They tap `+` on the Watchlist header, which opens CoinSearchSheet. Search runs locally against the SymbolCatalog. Selecting a Symbol adds a new WatchlistEntry.
+> **Domain expert:** They click `+` on the Watchlist header, which opens CoinSearchSheet. Search runs locally against the SymbolCatalog. Selecting a Symbol adds a new WatchlistEntry.
+>
+> **Dev:** How are Drawings stored?
+> **Domain expert:** Drawings are persisted per Symbol in localStorage via the Zustand store. Each Drawing carries its type, ControlPoints (as price/time coordinates), color, and width. They survive page reloads but are not synced across devices.

@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { Interval, IndicatorConfig, Drawing, WatchlistEntry, SymbolSettings, Market, VwapAnchor } from '@/types'
+import type { Interval, IndicatorConfig, Drawing, DrawingTool, WatchlistEntry, SymbolSettings, Market, VwapAnchor } from '@/types'
 
 const DEFAULT_INDICATORS: IndicatorConfig[] = [
   { type: 'SMA', enabled: false, period: 20 },
@@ -22,6 +22,11 @@ const DEFAULT_WATCHLIST: WatchlistEntry[] = [
 interface AppState {
   watchlist: WatchlistEntry[]
   activeSymbol: string
+  activeTool: DrawingTool
+  activeColor: string
+  activeWidth: 1 | 2 | 3
+  selectedDrawingId: string | null
+  lastPlacedDrawing: { id: string; symbol: string } | null
   symbolSettings: Record<string, SymbolSettings>
   watchlistPanelMode: 'list' | 'icons' | 'hidden'
   vwapEnabled: boolean
@@ -30,6 +35,11 @@ interface AppState {
   blSlowEnabled: boolean
 
   setActiveSymbol: (symbol: string) => void
+  setActiveTool: (tool: DrawingTool) => void
+  setActiveColor: (color: string) => void
+  setActiveWidth: (width: 1 | 2 | 3) => void
+  setSelectedDrawingId: (id: string | null) => void
+  undoLastDrawing: () => void
   setVwapEnabled: (enabled: boolean) => void
   setVwapAnchor: (anchor: VwapAnchor) => void
   setBlEnabled: (enabled: boolean) => void
@@ -45,6 +55,7 @@ interface AppState {
   updateIndicatorConfig: (symbol: string, config: Partial<IndicatorConfig> & { type: IndicatorConfig['type'] }) => void
   addDrawing: (symbol: string, drawing: Drawing) => void
   removeDrawing: (symbol: string, id: string) => void
+  updateDrawing: (symbol: string, id: string, patch: Partial<Drawing>) => void
 }
 
 const defaultSymbolSettings = (): SymbolSettings => ({
@@ -58,6 +69,11 @@ export const useAppStore = create<AppState>()(
     (set, get) => ({
       watchlist: DEFAULT_WATCHLIST,
       activeSymbol: 'BTCUSDT',
+      activeTool: 'cursor',
+      activeColor: '#ffffff',
+      activeWidth: 1,
+      selectedDrawingId: null,
+      lastPlacedDrawing: null,
       symbolSettings: {},
       watchlistPanelMode: 'list',
       vwapEnabled: true,
@@ -65,7 +81,17 @@ export const useAppStore = create<AppState>()(
       blEnabled: true,
       blSlowEnabled: true,
 
-      setActiveSymbol: (symbol) => set({ activeSymbol: symbol }),
+      setActiveSymbol: (symbol) => set({ activeSymbol: symbol, activeTool: 'cursor' }),
+      setActiveTool: (activeTool) => set({ activeTool }),
+      setActiveColor: (activeColor) => set({ activeColor }),
+      setActiveWidth: (activeWidth) => set({ activeWidth }),
+      setSelectedDrawingId: (selectedDrawingId) => set({ selectedDrawingId }),
+      undoLastDrawing: () => {
+        const { lastPlacedDrawing } = get()
+        if (!lastPlacedDrawing) return
+        get().removeDrawing(lastPlacedDrawing.symbol, lastPlacedDrawing.id)
+        set({ lastPlacedDrawing: null })
+      },
       setVwapEnabled: (vwapEnabled) => set({ vwapEnabled }),
       setVwapAnchor: (vwapAnchor) => set({ vwapAnchor }),
       setBlEnabled: (blEnabled) => set({ blEnabled }),
@@ -138,6 +164,7 @@ export const useAppStore = create<AppState>()(
         set((s) => {
           const settings = s.getSymbolSettings(symbol)
           return {
+            lastPlacedDrawing: { id: drawing.id, symbol },
             symbolSettings: {
               ...s.symbolSettings,
               [symbol]: { ...settings, drawings: [...settings.drawings, drawing] },
@@ -149,11 +176,26 @@ export const useAppStore = create<AppState>()(
         set((s) => {
           const settings = s.getSymbolSettings(symbol)
           return {
+            selectedDrawingId: s.selectedDrawingId === id ? null : s.selectedDrawingId,
             symbolSettings: {
               ...s.symbolSettings,
               [symbol]: {
                 ...settings,
                 drawings: settings.drawings.filter((d) => d.id !== id),
+              },
+            },
+          }
+        }),
+
+      updateDrawing: (symbol, id, patch) =>
+        set((s) => {
+          const settings = s.getSymbolSettings(symbol)
+          return {
+            symbolSettings: {
+              ...s.symbolSettings,
+              [symbol]: {
+                ...settings,
+                drawings: settings.drawings.map((d) => d.id === id ? { ...d, ...patch } : d),
               },
             },
           }

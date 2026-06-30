@@ -4,6 +4,16 @@ import type { IChartApi, ISeriesApi, Time } from 'lightweight-charts'
 import type { Kline, VwapAnchor } from '@/types'
 import { computeVwap, computeVwapLive } from '@/lib/vwap'
 import { computeBaseline, computeBaselineLive } from '@/lib/baseline'
+import { DrawingToolbar } from './DrawingToolbar'
+import { useAppStore } from '@/store'
+import { HorizontalRayPrimitive } from '@/lib/drawings/HorizontalRayPrimitive'
+import { PriceRangePrimitive } from '@/lib/drawings/PriceRangePrimitive'
+import { FibonacciPrimitive } from '@/lib/drawings/FibonacciPrimitive'
+import { DateRangePrimitive } from '@/lib/drawings/DateRangePrimitive'
+import { BrushPrimitive } from '@/lib/drawings/BrushPrimitive'
+import type { Drawing } from '@/types'
+
+const EMPTY_DRAWINGS: Drawing[] = []
 
 interface Props {
   klines: Kline[]
@@ -23,6 +33,193 @@ export function ChartPanel({ klines, liveCandle, loading, onChartReady, vwapEnab
   const vwapRef = useRef<ISeriesApi<'Line', Time> | null>(null)
   const blRef = useRef<ISeriesApi<'Line', Time> | null>(null)
   const blSlowRef = useRef<ISeriesApi<'Line', Time> | null>(null)
+
+  const activeTool = useAppStore((s) => s.activeTool)
+  const setActiveTool = useAppStore((s) => s.setActiveTool)
+  const activeColor = useAppStore((s) => s.activeColor)
+  const activeWidth = useAppStore((s) => s.activeWidth)
+  const activeSymbol = useAppStore((s) => s.activeSymbol)
+  const selectedDrawingId = useAppStore((s) => s.selectedDrawingId)
+  const setSelectedDrawingId = useAppStore((s) => s.setSelectedDrawingId)
+  const addDrawing = useAppStore((s) => s.addDrawing)
+  const removeDrawing = useAppStore((s) => s.removeDrawing)
+  const updateDrawing = useAppStore((s) => s.updateDrawing)
+  const undoLastDrawing = useAppStore((s) => s.undoLastDrawing)
+  // Read drawings directly from symbolSettings to avoid creating a new object on every render
+  const drawings = useAppStore((s) => s.symbolSettings[s.activeSymbol]?.drawings ?? EMPTY_DRAWINGS)
+
+  // Map of drawing id → primitive instance (HorizontalRayPrimitive or PriceRangePrimitive)
+  const primitivesRef = useRef<Map<string, HorizontalRayPrimitive | PriceRangePrimitive>>(new Map())
+  const fibPrimitivesRef = useRef<Map<string, FibonacciPrimitive>>(new Map())
+  const dateRangePrimitivesRef = useRef<Map<string, DateRangePrimitive>>(new Map())
+  const brushPrimitivesRef = useRef<Map<string, BrushPrimitive>>(new Map())
+  // Track drag state for ControlPoint repositioning (existing drawings)
+  const dragRef = useRef<{ id: string; startY: number; startPrice: number } | null>(null)
+  // Unified drag state for drawing placement — stores start pixel + initial price/time for preview updates
+  const drawDragRef = useRef<{ startX: number; startY: number; p1Price: number; p1Time: number } | null>(null)
+  // Brush stroke accumulation
+  const brushInProgressRef = useRef<{ time: number; value: number }[]>([])
+  // Live preview primitive (attached on mousedown, detached on mouseup/Escape)
+  type AnyDrawingPrimitive = HorizontalRayPrimitive | PriceRangePrimitive | FibonacciPrimitive | DateRangePrimitive | BrushPrimitive
+  const previewRef = useRef<{ primitive: AnyDrawingPrimitive; drawing: Drawing } | null>(null)
+
+  const detachPreview = () => {
+    if (!previewRef.current) return
+    seriesRef.current?.detachPrimitive(previewRef.current.primitive)
+    previewRef.current = null
+  }
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        detachPreview()
+        drawDragRef.current = null
+        brushInProgressRef.current = []
+        // keep activeTool unchanged so user can try again immediately
+      } else if ((e.key === 'Delete' || e.key === 'Backspace') && selectedDrawingId) {
+        removeDrawing(activeSymbol, selectedDrawingId)
+      } else if ((e.key === 'z' && (e.metaKey || e.ctrlKey))) {
+        undoLastDrawing()
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [selectedDrawingId, activeSymbol, removeDrawing, undoLastDrawing])
+
+  const handleOverlayMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    const series = seriesRef.current
+    const chart = chartRef.current
+    if (activeTool === 'cursor' || !series || !chart) return
+
+    const price = series.coordinateToPrice(e.nativeEvent.offsetY) ?? 0
+    const time = (chart.timeScale().coordinateToTime(e.nativeEvent.offsetX) ?? 0) as number
+
+    if (activeTool === 'brush') {
+      brushInProgressRef.current = [{ time, value: price }]
+      const drawing: Drawing = { id: '__preview__', type: 'brush', points: [{ time, value: price }], color: activeColor, width: activeWidth }
+      const primitive = new BrushPrimitive(drawing, () => {})
+      series.attachPrimitive(primitive)
+      previewRef.current = { primitive, drawing }
+      return
+    }
+
+    drawDragRef.current = { startX: e.nativeEvent.offsetX, startY: e.nativeEvent.offsetY, p1Price: price, p1Time: time }
+
+    let primitive: AnyDrawingPrimitive
+    let drawing: Drawing
+    if (activeTool === 'horizontal_ray') {
+      drawing = { id: '__preview__', type: 'horizontal_ray', points: [{ time, value: price }], color: activeColor, width: activeWidth }
+      primitive = new HorizontalRayPrimitive(drawing, () => {}, () => {}, () => {})
+    } else if (activeTool === 'price_range') {
+      drawing = { id: '__preview__', type: 'price_range', points: [{ time: 0, value: price }, { time: 0, value: price }], color: activeColor, width: activeWidth }
+      primitive = new PriceRangePrimitive(drawing, () => {}, () => {})
+    } else if (activeTool === 'fibonacci') {
+      drawing = { id: '__preview__', type: 'fibonacci', points: [{ time, value: price }, { time, value: price }], color: activeColor, width: activeWidth }
+      primitive = new FibonacciPrimitive(drawing, () => {}, () => {})
+    } else { // date_range
+      drawing = { id: '__preview__', type: 'date_range', points: [{ time, value: 0 }, { time, value: 0 }], color: activeColor, width: activeWidth }
+      primitive = new DateRangePrimitive(drawing)
+    }
+    series.attachPrimitive(primitive)
+    previewRef.current = { primitive, drawing }
+  }
+
+  const handleOverlayMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    const series = seriesRef.current
+    const chart = chartRef.current
+    const preview = previewRef.current
+    if (!series || !chart || !preview) return
+
+    const price = series.coordinateToPrice(e.nativeEvent.offsetY) ?? 0
+    const time = (chart.timeScale().coordinateToTime(e.nativeEvent.offsetX) ?? 0) as number
+
+    if (activeTool === 'brush') {
+      if (brushInProgressRef.current.length === 0) return
+      brushInProgressRef.current.push({ time, value: price })
+      preview.primitive.updateDrawing({ ...preview.drawing, points: [...brushInProgressRef.current] })
+      return
+    }
+
+    const drag = drawDragRef.current
+    if (!drag) return
+
+    let updatedPoints: { time: number; value: number }[]
+    if (activeTool === 'price_range') {
+      updatedPoints = [{ time: 0, value: drag.p1Price }, { time: 0, value: price }]
+    } else if (activeTool === 'fibonacci') {
+      updatedPoints = [{ time: drag.p1Time, value: drag.p1Price }, { time, value: price }]
+    } else if (activeTool === 'date_range') {
+      updatedPoints = [{ time: drag.p1Time, value: 0 }, { time, value: 0 }]
+    } else {
+      return // horizontal_ray is fixed at mousedown Y — no update needed
+    }
+    preview.primitive.updateDrawing({ ...preview.drawing, points: updatedPoints })
+  }
+
+  const handleOverlayMouseUp = (e: React.MouseEvent<HTMLDivElement>) => {
+    detachPreview()
+
+    if (activeTool === 'brush') {
+      const pts = brushInProgressRef.current
+      brushInProgressRef.current = []
+      if (pts.length < 2) return
+      addDrawing(activeSymbol, {
+        id: crypto.randomUUID(),
+        type: 'brush',
+        points: pts,
+        color: activeColor,
+        width: activeWidth,
+      })
+      setActiveTool('cursor')
+      return
+    }
+
+    const drag = drawDragRef.current
+    if (!drag) return
+    drawDragRef.current = null
+
+    const dist = Math.hypot(e.nativeEvent.offsetX - drag.startX, e.nativeEvent.offsetY - drag.startY)
+    if (dist < 4) return
+
+    if (activeTool === 'horizontal_ray') {
+      addDrawing(activeSymbol, {
+        id: crypto.randomUUID(),
+        type: 'horizontal_ray',
+        points: [{ time: drag.p1Time, value: drag.p1Price }],
+        color: activeColor,
+        width: activeWidth,
+      })
+    } else if (activeTool === 'price_range') {
+      const price2 = seriesRef.current?.coordinateToPrice(e.nativeEvent.offsetY) ?? 0
+      addDrawing(activeSymbol, {
+        id: crypto.randomUUID(),
+        type: 'price_range',
+        points: [{ time: 0, value: drag.p1Price }, { time: 0, value: price2 }],
+        color: activeColor,
+        width: activeWidth,
+      })
+    } else if (activeTool === 'fibonacci') {
+      const price2 = seriesRef.current?.coordinateToPrice(e.nativeEvent.offsetY) ?? 0
+      const time2 = (chartRef.current?.timeScale().coordinateToTime(e.nativeEvent.offsetX) ?? 0) as number
+      addDrawing(activeSymbol, {
+        id: crypto.randomUUID(),
+        type: 'fibonacci',
+        points: [{ time: drag.p1Time, value: drag.p1Price }, { time: time2, value: price2 }],
+        color: activeColor,
+        width: activeWidth,
+      })
+    } else if (activeTool === 'date_range') {
+      const time2 = (chartRef.current?.timeScale().coordinateToTime(e.nativeEvent.offsetX) ?? 0) as number
+      addDrawing(activeSymbol, {
+        id: crypto.randomUUID(),
+        type: 'date_range',
+        points: [{ time: drag.p1Time, value: 0 }, { time: time2, value: 0 }],
+        color: activeColor,
+        width: activeWidth,
+      })
+    }
+    setActiveTool('cursor')
+  }
 
   useEffect(() => {
     if (!containerRef.current) return
@@ -72,6 +269,21 @@ export function ChartPanel({ klines, liveCandle, loading, onChartReady, vwapEnab
       lastValueVisible: true,
     })
 
+    // Wire selection via chart click events (cursor mode only — overlay is pointer-events-none)
+    chart.subscribeClick((param) => {
+      if (!param.hoveredObjectId) {
+        useAppStore.getState().setSelectedDrawingId(null)
+        return
+      }
+      const id = param.hoveredObjectId as string
+      if (id.startsWith('delete:')) {
+        const drawingId = id.slice(7)
+        useAppStore.getState().removeDrawing(useAppStore.getState().activeSymbol, drawingId)
+      } else {
+        useAppStore.getState().setSelectedDrawingId(id)
+      }
+    })
+
     chartRef.current = chart
     seriesRef.current = series
     vwapRef.current = vwap
@@ -94,6 +306,165 @@ export function ChartPanel({ klines, liveCandle, loading, onChartReady, vwapEnab
       chart.remove()
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Sync drawing primitives with store — mount/unmount/update as drawings change
+  useEffect(() => {
+    const series = seriesRef.current
+    if (!series) return
+
+    // --- horizontal_ray + price_range ---
+    const current = primitivesRef.current
+    const currentIds = new Set(current.keys())
+    const supportedTypes = new Set(['horizontal_ray', 'price_range'])
+    const newIds = new Set(drawings.filter(d => supportedTypes.has(d.type)).map(d => d.id))
+
+    for (const id of currentIds) {
+      if (!newIds.has(id)) {
+        series.detachPrimitive(current.get(id)!)
+        current.delete(id)
+      }
+    }
+
+    for (const drawing of drawings) {
+      if (drawing.type === 'horizontal_ray') {
+        if (!current.has(drawing.id)) {
+          const primitive = new HorizontalRayPrimitive(
+            drawing,
+            (id) => setSelectedDrawingId(id),
+            (id) => removeDrawing(activeSymbol, id),
+            (id, newPrice) => updateDrawing(activeSymbol, id, { points: [{ time: 0, value: newPrice }] }),
+          )
+          series.attachPrimitive(primitive)
+          current.set(drawing.id, primitive)
+        } else {
+          current.get(drawing.id)!.updateDrawing(drawing)
+        }
+        current.get(drawing.id)!.setSelected(selectedDrawingId === drawing.id)
+      } else if (drawing.type === 'price_range') {
+        if (!current.has(drawing.id)) {
+          const primitive = new PriceRangePrimitive(
+            drawing,
+            (id) => setSelectedDrawingId(id),
+            (id) => removeDrawing(activeSymbol, id),
+          )
+          series.attachPrimitive(primitive)
+          current.set(drawing.id, primitive)
+        } else {
+          current.get(drawing.id)!.updateDrawing(drawing)
+        }
+        current.get(drawing.id)!.setSelected(selectedDrawingId === drawing.id)
+      }
+    }
+
+    // --- fibonacci ---
+    const fibCurrent = fibPrimitivesRef.current
+    const fibCurrentIds = new Set(fibCurrent.keys())
+    const newFibIds = new Set(drawings.filter(d => d.type === 'fibonacci').map(d => d.id))
+
+    for (const id of fibCurrentIds) {
+      if (!newFibIds.has(id)) {
+        series.detachPrimitive(fibCurrent.get(id)!)
+        fibCurrent.delete(id)
+      }
+    }
+
+    for (const drawing of drawings) {
+      if (drawing.type !== 'fibonacci') continue
+      if (!fibCurrent.has(drawing.id)) {
+        const primitive = new FibonacciPrimitive(
+          drawing,
+          (id) => setSelectedDrawingId(id),
+          (id) => removeDrawing(activeSymbol, id),
+        )
+        series.attachPrimitive(primitive)
+        fibCurrent.set(drawing.id, primitive)
+      } else {
+        fibCurrent.get(drawing.id)!.updateDrawing(drawing)
+      }
+      fibCurrent.get(drawing.id)!.setSelected(selectedDrawingId === drawing.id)
+    }
+
+    // --- date_range ---
+    const drCurrent = dateRangePrimitivesRef.current
+    const drCurrentIds = new Set(drCurrent.keys())
+    const newDrIds = new Set(drawings.filter(d => d.type === 'date_range').map(d => d.id))
+
+    for (const id of drCurrentIds) {
+      if (!newDrIds.has(id)) {
+        series.detachPrimitive(drCurrent.get(id)!)
+        drCurrent.delete(id)
+      }
+    }
+
+    for (const drawing of drawings) {
+      if (drawing.type !== 'date_range') continue
+      if (!drCurrent.has(drawing.id)) {
+        const primitive = new DateRangePrimitive(drawing)
+        series.attachPrimitive(primitive)
+        drCurrent.set(drawing.id, primitive)
+      } else {
+        drCurrent.get(drawing.id)!.updateDrawing(drawing)
+      }
+    }
+
+    // --- brush ---
+    const brushCurrent = brushPrimitivesRef.current
+    const brushCurrentIds = new Set(brushCurrent.keys())
+    const newBrushIds = new Set(drawings.filter(d => d.type === 'brush').map(d => d.id))
+
+    for (const id of brushCurrentIds) {
+      if (!newBrushIds.has(id)) {
+        series.detachPrimitive(brushCurrent.get(id)!)
+        brushCurrent.delete(id)
+      }
+    }
+
+    for (const drawing of drawings) {
+      if (drawing.type !== 'brush') continue
+      if (!brushCurrent.has(drawing.id)) {
+        const primitive = new BrushPrimitive(drawing, (id) => setSelectedDrawingId(id))
+        series.attachPrimitive(primitive)
+        brushCurrent.set(drawing.id, primitive)
+      } else {
+        brushCurrent.get(drawing.id)!.updateDrawing(drawing)
+      }
+    }
+  }, [drawings, selectedDrawingId, activeSymbol, setSelectedDrawingId, removeDrawing, updateDrawing])
+
+  // Drag: mousedown on ControlPoint → track mousemove to reposition the selected ray
+  useEffect(() => {
+    const container = containerRef.current
+    const series = seriesRef.current
+    if (!container || !series) return
+
+    const onMouseDown = (e: MouseEvent) => {
+      if (!selectedDrawingId) return
+      const primitive = primitivesRef.current.get(selectedDrawingId)
+      if (!primitive) return
+      const hit = primitive.hitTest(e.offsetX, e.offsetY)
+      if (hit && !hit.externalId.startsWith('delete:')) {
+        const price = series.coordinateToPrice(e.offsetY) ?? 0
+        dragRef.current = { id: selectedDrawingId, startY: e.offsetY, startPrice: price }
+      }
+    }
+
+    const onMouseMove = (e: MouseEvent) => {
+      if (!dragRef.current) return
+      const newPrice = series.coordinateToPrice(e.offsetY) ?? 0
+      updateDrawing(activeSymbol, dragRef.current.id, { points: [{ time: 0, value: newPrice }] })
+    }
+
+    const onMouseUp = () => { dragRef.current = null }
+
+    container.addEventListener('mousedown', onMouseDown)
+    container.addEventListener('mousemove', onMouseMove)
+    container.addEventListener('mouseup', onMouseUp)
+    return () => {
+      container.removeEventListener('mousedown', onMouseDown)
+      container.removeEventListener('mousemove', onMouseMove)
+      container.removeEventListener('mouseup', onMouseUp)
+    }
+  }, [selectedDrawingId, activeSymbol, updateDrawing])
 
   // Full reload: only when historical klines change (symbol/interval switch)
   useEffect(() => {
@@ -163,13 +534,23 @@ export function ChartPanel({ klines, liveCandle, loading, onChartReady, vwapEnab
   }, [liveCandle]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <div className="relative flex-1 min-w-0 min-h-0">
-      {loading && (
-        <div className="absolute inset-0 flex items-center justify-center z-10 bg-[#0f1117]/80">
-          <span className="text-slate-400 text-sm">Loading chart…</span>
-        </div>
-      )}
-      <div ref={containerRef} className="w-full h-full" />
+    <div className="relative flex-1 min-w-0 min-h-0 flex">
+      <DrawingToolbar />
+      <div className="relative flex-1 min-w-0 min-h-0">
+        {loading && (
+          <div className="absolute inset-0 flex items-center justify-center z-10 bg-[#0f1117]/80">
+            <span className="text-slate-400 text-sm">Loading chart…</span>
+          </div>
+        )}
+        <div
+          data-drawing-overlay
+          onMouseDown={handleOverlayMouseDown}
+          onMouseMove={handleOverlayMouseMove}
+          onMouseUp={handleOverlayMouseUp}
+          className={`absolute inset-0 z-10 ${activeTool === 'cursor' ? 'pointer-events-none' : 'pointer-events-auto'}`}
+        />
+        <div ref={containerRef} className="w-full h-full" />
+      </div>
     </div>
   )
 }

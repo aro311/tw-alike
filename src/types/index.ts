@@ -32,10 +32,20 @@ export interface IndicatorConfig {
   oversold?: number
 }
 
+export type DrawingTool =
+  | 'cursor'
+  | 'horizontal_ray'
+  | 'fibonacci'
+  | 'price_range'
+  | 'date_range'
+  | 'brush'
+
 export interface Drawing {
   id: string
-  type: 'horizontal' | 'trendline' | 'fibonacci'
+  type: 'horizontal' | 'horizontal_ray' | 'trendline' | 'fibonacci' | 'price_range' | 'date_range' | 'brush'
   points: { time: number; value: number }[]
+  color: string
+  width: 1 | 2 | 3
 }
 
 export type Market = 'spot' | 'futures'
