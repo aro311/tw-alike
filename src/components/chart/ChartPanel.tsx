@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { createChart, ColorType, CrosshairMode, CandlestickSeries, LineSeries } from 'lightweight-charts'
+import { createChart, ColorType, CrosshairMode, LineStyle, CandlestickSeries, LineSeries } from 'lightweight-charts'
 import type { IChartApi, ISeriesApi, Time } from 'lightweight-charts'
 import type { Kline, VwapAnchor } from '@/types'
 import { computeVwap, computeVwapLive } from '@/lib/vwap'
@@ -233,7 +233,25 @@ export function ChartPanel({ klines, liveCandle, loading, onChartReady, vwapEnab
         vertLines: { color: '#1e2433' },
         horzLines: { color: '#1e2433' },
       },
-      crosshair: { mode: CrosshairMode.Normal },
+      crosshair: {
+        mode: CrosshairMode.Normal,
+        horzLine: {
+          color: '#94a3b8',
+          width: 1,
+          style: LineStyle.Dashed,
+          visible: true,
+          labelVisible: true,
+          labelBackgroundColor: '#1e2433',
+        },
+        vertLine: {
+          color: '#94a3b8',
+          width: 1,
+          style: LineStyle.Dashed,
+          visible: true,
+          labelVisible: true,
+          labelBackgroundColor: '#1e2433',
+        },
+      },
       rightPriceScale: { borderColor: '#1e2433' },
       timeScale: { borderColor: '#1e2433', timeVisible: true },
       width: containerRef.current.clientWidth,
