@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createChart, ColorType, CrosshairMode, LineStyle, CandlestickSeries, LineSeries } from 'lightweight-charts'
 import type { IChartApi, ISeriesApi, Time } from 'lightweight-charts'
 import type { Kline, VwapAnchor } from '@/types'
@@ -62,6 +62,8 @@ export function ChartPanel({ klines, liveCandle, loading, onChartReady, vwapEnab
   // Live preview primitive (attached on mousedown, detached on mouseup/Escape)
   type AnyDrawingPrimitive = HorizontalRayPrimitive | PriceRangePrimitive | FibonacciPrimitive | DateRangePrimitive | BrushPrimitive
   const previewRef = useRef<{ primitive: AnyDrawingPrimitive; drawing: Drawing } | null>(null)
+  // Overlay crosshair position (shown while a drawing tool is active)
+  const [overlayCursor, setOverlayCursor] = useState<{ x: number; y: number; price: number } | null>(null)
 
   const detachPreview = () => {
     if (!previewRef.current) return
@@ -127,11 +129,15 @@ export function ChartPanel({ klines, liveCandle, loading, onChartReady, vwapEnab
   const handleOverlayMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     const series = seriesRef.current
     const chart = chartRef.current
-    const preview = previewRef.current
-    if (!series || !chart || !preview) return
+    if (!series || !chart) return
 
     const price = series.coordinateToPrice(e.nativeEvent.offsetY) ?? 0
     const time = (chart.timeScale().coordinateToTime(e.nativeEvent.offsetX) ?? 0) as number
+
+    setOverlayCursor({ x: e.nativeEvent.offsetX, y: e.nativeEvent.offsetY, price })
+
+    const preview = previewRef.current
+    if (!preview) return
 
     if (activeTool === 'brush') {
       if (brushInProgressRef.current.length === 0) return
@@ -565,8 +571,39 @@ export function ChartPanel({ klines, liveCandle, loading, onChartReady, vwapEnab
           onMouseDown={handleOverlayMouseDown}
           onMouseMove={handleOverlayMouseMove}
           onMouseUp={handleOverlayMouseUp}
+          onMouseLeave={() => setOverlayCursor(null)}
           className={`absolute inset-0 z-10 ${activeTool === 'cursor' ? 'pointer-events-none' : 'pointer-events-auto'}`}
-        />
+        >
+          {overlayCursor && activeTool !== 'cursor' && (
+            <>
+              {/* horizontal dashed line */}
+              <div
+                className="absolute left-0 right-0 pointer-events-none"
+                style={{
+                  top: overlayCursor.y,
+                  height: 1,
+                  backgroundImage: 'repeating-linear-gradient(to right, #94a3b8 0, #94a3b8 4px, transparent 4px, transparent 8px)',
+                }}
+              />
+              {/* vertical dashed line */}
+              <div
+                className="absolute top-0 bottom-0 pointer-events-none"
+                style={{
+                  left: overlayCursor.x,
+                  width: 1,
+                  backgroundImage: 'repeating-linear-gradient(to bottom, #94a3b8 0, #94a3b8 4px, transparent 4px, transparent 8px)',
+                }}
+              />
+              {/* price label on right edge */}
+              <div
+                className="absolute right-0 pointer-events-none px-1 text-xs text-slate-300 bg-[#1e2433] border border-[#334155] -translate-y-1/2"
+                style={{ top: overlayCursor.y }}
+              >
+                {overlayCursor.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </div>
+            </>
+          )}
+        </div>
         <div ref={containerRef} className="w-full h-full" />
       </div>
     </div>
