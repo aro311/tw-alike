@@ -54,7 +54,7 @@ export function ChartPanel({ klines, liveCandle, loading, onChartReady, vwapEnab
   const dateRangePrimitivesRef = useRef<Map<string, DateRangePrimitive>>(new Map())
   const brushPrimitivesRef = useRef<Map<string, BrushPrimitive>>(new Map())
   // Track drag state for ControlPoint repositioning (existing drawings)
-  const dragRef = useRef<{ id: string; startY: number; startPrice: number } | null>(null)
+  const dragRef = useRef<{ id: string; startY: number; startPrice: number; p1Time: number; isAnchorDrag: boolean } | null>(null)
   // Unified drag state for drawing placement — stores start pixel + initial price/time for preview updates
   const drawDragRef = useRef<{ startX: number; startY: number; p1Price: number; p1Time: number } | null>(null)
   // Brush stroke accumulation
@@ -96,6 +96,18 @@ export function ChartPanel({ klines, liveCandle, loading, onChartReady, vwapEnab
     const price = series.coordinateToPrice(e.nativeEvent.offsetY) ?? 0
     const time = (chart.timeScale().coordinateToTime(e.nativeEvent.offsetX) ?? 0) as number
 
+    if (activeTool === 'horizontal_ray') {
+      addDrawing(activeSymbol, {
+        id: crypto.randomUUID(),
+        type: 'horizontal_ray',
+        points: [{ time, value: price }],
+        color: activeColor,
+        width: activeWidth,
+      })
+      setActiveTool('cursor')
+      return
+    }
+
     if (activeTool === 'brush') {
       brushInProgressRef.current = [{ time, value: price }]
       const drawing: Drawing = { id: '__preview__', type: 'brush', points: [{ time, value: price }], color: activeColor, width: activeWidth }
@@ -109,10 +121,7 @@ export function ChartPanel({ klines, liveCandle, loading, onChartReady, vwapEnab
 
     let primitive: AnyDrawingPrimitive
     let drawing: Drawing
-    if (activeTool === 'horizontal_ray') {
-      drawing = { id: '__preview__', type: 'horizontal_ray', points: [{ time, value: price }], color: activeColor, width: activeWidth }
-      primitive = new HorizontalRayPrimitive(drawing, () => {}, () => {}, () => {})
-    } else if (activeTool === 'price_range') {
+    if (activeTool === 'price_range') {
       drawing = { id: '__preview__', type: 'price_range', points: [{ time: 0, value: price }, { time: 0, value: price }], color: activeColor, width: activeWidth }
       primitive = new PriceRangePrimitive(drawing, () => {}, () => {})
     } else if (activeTool === 'fibonacci') {
@@ -187,15 +196,7 @@ export function ChartPanel({ klines, liveCandle, loading, onChartReady, vwapEnab
     const dist = Math.hypot(e.nativeEvent.offsetX - drag.startX, e.nativeEvent.offsetY - drag.startY)
     if (dist < 4) return
 
-    if (activeTool === 'horizontal_ray') {
-      addDrawing(activeSymbol, {
-        id: crypto.randomUUID(),
-        type: 'horizontal_ray',
-        points: [{ time: drag.p1Time, value: drag.p1Price }],
-        color: activeColor,
-        width: activeWidth,
-      })
-    } else if (activeTool === 'price_range') {
+    if (activeTool === 'price_range') {
       const price2 = seriesRef.current?.coordinateToPrice(e.nativeEvent.offsetY) ?? 0
       addDrawing(activeSymbol, {
         id: crypto.randomUUID(),
@@ -459,26 +460,37 @@ export function ChartPanel({ klines, liveCandle, loading, onChartReady, vwapEnab
   useEffect(() => {
     const container = containerRef.current
     const series = seriesRef.current
-    if (!container || !series) return
+    const chart = chartRef.current
+    if (!container || !series || !chart) return
 
     const onMouseDown = (e: MouseEvent) => {
       if (!selectedDrawingId) return
       const primitive = primitivesRef.current.get(selectedDrawingId)
       if (!primitive) return
       const hit = primitive.hitTest(e.offsetX, e.offsetY)
-      if (hit && !hit.externalId.startsWith('delete:')) {
-        const price = series.coordinateToPrice(e.offsetY) ?? 0
-        dragRef.current = { id: selectedDrawingId, startY: e.offsetY, startPrice: price }
-      }
+      if (!hit || hit.externalId.startsWith('delete:')) return
+      const price = series.coordinateToPrice(e.offsetY) ?? 0
+      const existingTime = (primitive.drawing.points[0]?.time as number) ?? 0
+      const isAnchorDrag = hit.externalId.startsWith('anchor:')
+      dragRef.current = { id: selectedDrawingId, startY: e.offsetY, startPrice: price, p1Time: existingTime, isAnchorDrag }
+      chart.applyOptions({ handleScroll: false, handleScale: false })
     }
 
     const onMouseMove = (e: MouseEvent) => {
       if (!dragRef.current) return
       const newPrice = series.coordinateToPrice(e.offsetY) ?? 0
-      updateDrawing(activeSymbol, dragRef.current.id, { points: [{ time: 0, value: newPrice }] })
+      if (dragRef.current.isAnchorDrag) {
+        const newTime = (chart.timeScale().coordinateToTime(e.offsetX) ?? dragRef.current.p1Time) as number
+        updateDrawing(activeSymbol, dragRef.current.id, { points: [{ time: newTime, value: newPrice }] })
+      } else {
+        updateDrawing(activeSymbol, dragRef.current.id, { points: [{ time: dragRef.current.p1Time, value: newPrice }] })
+      }
     }
 
-    const onMouseUp = () => { dragRef.current = null }
+    const onMouseUp = () => {
+      if (dragRef.current) chart.applyOptions({ handleScroll: true, handleScale: true })
+      dragRef.current = null
+    }
 
     container.addEventListener('mousedown', onMouseDown)
     container.addEventListener('mousemove', onMouseMove)

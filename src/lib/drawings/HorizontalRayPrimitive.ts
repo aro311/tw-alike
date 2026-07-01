@@ -1,6 +1,7 @@
 import type {
   ISeriesPrimitive,
   IPrimitivePaneView,
+  ISeriesPrimitiveAxisView,
   SeriesAttachedParameter,
   IPrimitivePaneRenderer,
   PrimitiveHoveredItem,
@@ -17,12 +18,14 @@ const DELETE_ICON_OFFSET = 20
 class HorizontalRayRenderer implements IPrimitivePaneRenderer {
   drawing: Drawing
   y: number
+  anchorX: number
   canvasWidth: number
   selected: boolean
 
-  constructor(drawing: Drawing, y: number, canvasWidth: number, selected: boolean) {
+  constructor(drawing: Drawing, y: number, anchorX: number, canvasWidth: number, selected: boolean) {
     this.drawing = drawing
     this.y = y
+    this.anchorX = anchorX
     this.canvasWidth = canvasWidth
     this.selected = selected
   }
@@ -30,8 +33,13 @@ class HorizontalRayRenderer implements IPrimitivePaneRenderer {
   draw(target: DrawTarget) {
     target.useBitmapCoordinateSpace((scope: Parameters<DrawTarget['useBitmapCoordinateSpace']>[0] extends (s: infer S) => void ? S : never) => {
       const ctx = scope.context
-      const { y, canvasWidth, drawing, selected } = this
+      const { y, anchorX, canvasWidth, drawing, selected } = this
       const ratio = scope.verticalPixelRatio
+      const hr = scope.horizontalPixelRatio
+
+      // Clamp anchor to visible left edge; skip if anchor is off-screen right
+      const startX = Math.max(0, anchorX)
+      if (startX >= canvasWidth) return
 
       ctx.save()
 
@@ -39,19 +47,21 @@ class HorizontalRayRenderer implements IPrimitivePaneRenderer {
       ctx.lineWidth = drawing.width
       ctx.setLineDash([])
       ctx.beginPath()
-      ctx.moveTo(0, y * ratio)
-      ctx.lineTo(canvasWidth * scope.horizontalPixelRatio, y * ratio)
+      ctx.moveTo(startX * hr, y * ratio)
+      ctx.lineTo(canvasWidth * hr, y * ratio)
       ctx.stroke()
 
       if (selected) {
         const hy = y * ratio
-        ctx.fillStyle = drawing.color
-        ctx.strokeStyle = '#0f1117'
-        ctx.lineWidth = 2
-        ctx.beginPath()
-        ctx.arc((HANDLE_RADIUS + 4) * scope.horizontalPixelRatio, hy, HANDLE_RADIUS * ratio, 0, Math.PI * 2)
-        ctx.fill()
-        ctx.stroke()
+
+        // Blue ring at anchor point (only when anchor is visible)
+        if (anchorX >= 0) {
+          ctx.strokeStyle = '#3b82f6'
+          ctx.lineWidth = 2 * scope.horizontalPixelRatio
+          ctx.beginPath()
+          ctx.arc(startX * hr, hy, HANDLE_RADIUS * ratio, 0, Math.PI * 2)
+          ctx.stroke()
+        }
 
         const iconX = (canvasWidth - DELETE_ICON_SIZE - DELETE_ICON_OFFSET) * scope.horizontalPixelRatio
         const iconY = hy - DELETE_ICON_OFFSET * ratio
@@ -102,8 +112,10 @@ class HorizontalRayPaneView implements IPrimitivePaneView {
   renderer(): IPrimitivePaneRenderer {
     const price = this.drawing.points[0]?.value ?? 0
     const y = this.series.priceToCoordinate(price) ?? 0
+    const anchorTime = this.drawing.points[0]?.time as Time | undefined
+    const anchorX = anchorTime != null ? (this.chart.timeScale().timeToCoordinate(anchorTime) ?? 0) : 0
     const width = this.chart.timeScale().width()
-    return new HorizontalRayRenderer(this.drawing, y, width, this.selected)
+    return new HorizontalRayRenderer(this.drawing, y, anchorX, width, this.selected)
   }
 }
 
@@ -151,8 +163,16 @@ export class HorizontalRayPrimitive implements ISeriesPrimitive<Time> {
     const price = this.drawing.points[0]?.value ?? 0
     const lineY = this._param.series.priceToCoordinate(price) ?? -999
     const tolerance = Math.max(this.drawing.width, 4)
+    const anchorTime = this.drawing.points[0]?.time as Time | undefined
+    const anchorX = anchorTime != null ? (this._param.chart.timeScale().timeToCoordinate(anchorTime) ?? 0) : 0
+    const visibleAnchorX = Math.max(0, anchorX)
 
-    if (Math.abs(y - lineY) <= tolerance) {
+    // Anchor ring takes priority — check it before the line body
+    if (this._selected && anchorX >= 0 && Math.hypot(x - visibleAnchorX, y - lineY) <= HANDLE_RADIUS + 4) {
+      return { externalId: `anchor:${this.drawing.id}`, cursorStyle: 'move', zOrder: 'top', isBackground: false }
+    }
+
+    if (x >= visibleAnchorX && Math.abs(y - lineY) <= tolerance) {
       return { externalId: this.drawing.id, cursorStyle: 'pointer', zOrder: 'top', isBackground: false }
     }
 
@@ -185,5 +205,19 @@ export class HorizontalRayPrimitive implements ISeriesPrimitive<Time> {
   paneViews(): IPrimitivePaneView[] {
     if (!this._param) return []
     return [new HorizontalRayPaneView(this.drawing, this._param.series, this._param.chart, this._selected)]
+  }
+
+  priceAxisViews(): readonly ISeriesPrimitiveAxisView[] {
+    if (!this._param) return []
+    const price = this.drawing.points[0]?.value ?? 0
+    const coordinate = this._param.series.priceToCoordinate(price) ?? -1
+    if (coordinate < 0) return []
+    const label = price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    return [{
+      coordinate: () => coordinate,
+      text: () => label,
+      textColor: () => '#ffffff',
+      backColor: () => this.drawing.color,
+    }]
   }
 }
