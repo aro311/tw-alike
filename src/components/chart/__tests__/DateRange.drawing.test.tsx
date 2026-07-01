@@ -21,12 +21,14 @@ vi.mock('lightweight-charts', () => ({
     }),
     subscribeClick: vi.fn(),
     subscribeCrosshairMove: vi.fn(),
+    subscribeDblClick: vi.fn(),
     remove: vi.fn(),
   }),
   CandlestickSeries: {},
   LineSeries: {},
   ColorType: { Solid: 'solid' },
   CrosshairMode: { Normal: 0 },
+  LineStyle: { Dashed: 1 },
 }))
 
 window.ResizeObserver = class {

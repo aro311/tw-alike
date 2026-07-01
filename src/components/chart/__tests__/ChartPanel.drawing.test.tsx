@@ -21,12 +21,14 @@ vi.mock('lightweight-charts', () => ({
     }),
     subscribeClick: vi.fn(),
     subscribeCrosshairMove: vi.fn(),
+    subscribeDblClick: vi.fn(),
     remove: vi.fn(),
   }),
   CandlestickSeries: {},
   LineSeries: {},
   ColorType: { Solid: 'solid' },
   CrosshairMode: { Normal: 0 },
+  LineStyle: { Dashed: 1 },
 }))
 
 window.ResizeObserver = class {
@@ -72,7 +74,7 @@ describe('ChartPanel drawing overlay', () => {
     expect(overlay).toHaveClass('pointer-events-auto')
   })
 
-  it('dragging ≥4px in horizontal_ray mode commits a Drawing', () => {
+  it('single click (mouseDown) in horizontal_ray mode commits a Drawing immediately', () => {
     useAppStore.setState({
       activeTool: 'horizontal_ray',
       activeSymbol: 'BTCUSDT',
@@ -82,7 +84,6 @@ describe('ChartPanel drawing overlay', () => {
     const { container } = render(<ChartPanel {...defaultProps} />)
     const overlay = container.querySelector('[data-drawing-overlay]')!
     fireEvent.mouseDown(overlay, { offsetX: 50, offsetY: 100 })
-    fireEvent.mouseUp(overlay, { offsetX: 60, offsetY: 100 })
     const drawings = useAppStore.getState().getSymbolSettings('BTCUSDT').drawings
     expect(drawings).toHaveLength(1)
     expect(drawings[0]).toMatchObject({
@@ -93,42 +94,41 @@ describe('ChartPanel drawing overlay', () => {
     })
   })
 
-  it('drag below 4px threshold commits nothing', () => {
+  it('horizontal_ray mouseDown commits and resets activeTool to cursor', () => {
     useAppStore.setState({ activeTool: 'horizontal_ray', activeSymbol: 'BTCUSDT' })
     const { container } = render(<ChartPanel {...defaultProps} />)
     const overlay = container.querySelector('[data-drawing-overlay]')!
     fireEvent.mouseDown(overlay, { offsetX: 50, offsetY: 100 })
-    fireEvent.mouseUp(overlay, { offsetX: 52, offsetY: 101 })
-    expect(useAppStore.getState().getSymbolSettings('BTCUSDT').drawings).toHaveLength(0)
+    expect(useAppStore.getState().getSymbolSettings('BTCUSDT').drawings).toHaveLength(1)
+    expect(useAppStore.getState().activeTool).toBe('cursor')
   })
 
-  it('Escape mid-drag cancels without changing the active tool', async () => {
-    useAppStore.setState({ activeTool: 'horizontal_ray', activeSymbol: 'BTCUSDT' })
+  it('Escape during price_range drag cancels without committing', async () => {
+    useAppStore.setState({ activeTool: 'price_range', activeSymbol: 'BTCUSDT' })
     const { container } = render(<ChartPanel {...defaultProps} />)
     const overlay = container.querySelector('[data-drawing-overlay]')!
     fireEvent.mouseDown(overlay, { offsetX: 50, offsetY: 100 })
     await userEvent.keyboard('{Escape}')
-    expect(useAppStore.getState().activeTool).toBe('horizontal_ray')
+    expect(useAppStore.getState().activeTool).toBe('price_range')
     fireEvent.mouseUp(overlay, { offsetX: 200, offsetY: 100 })
     expect(useAppStore.getState().getSymbolSettings('BTCUSDT').drawings).toHaveLength(0)
   })
 
-  it('activeTool resets to cursor after a successful commit', () => {
+  it('activeTool resets to cursor after a successful horizontal_ray commit', () => {
     useAppStore.setState({ activeTool: 'horizontal_ray', activeSymbol: 'BTCUSDT' })
     const { container } = render(<ChartPanel {...defaultProps} />)
     const overlay = container.querySelector('[data-drawing-overlay]')!
     fireEvent.mouseDown(overlay, { offsetX: 50, offsetY: 100 })
-    fireEvent.mouseUp(overlay, { offsetX: 60, offsetY: 100 })
     expect(useAppStore.getState().activeTool).toBe('cursor')
   })
 
-  it('activeTool stays unchanged when drag is below threshold', () => {
-    useAppStore.setState({ activeTool: 'horizontal_ray', activeSymbol: 'BTCUSDT' })
+  it('price_range activeTool stays unchanged when drag is below threshold', () => {
+    useAppStore.setState({ activeTool: 'price_range', activeSymbol: 'BTCUSDT' })
     const { container } = render(<ChartPanel {...defaultProps} />)
     const overlay = container.querySelector('[data-drawing-overlay]')!
     fireEvent.mouseDown(overlay, { offsetX: 50, offsetY: 100 })
     fireEvent.mouseUp(overlay, { offsetX: 52, offsetY: 101 })
-    expect(useAppStore.getState().activeTool).toBe('horizontal_ray')
+    expect(useAppStore.getState().activeTool).toBe('price_range')
   })
 
   it('Delete key removes the selected Drawing', async () => {

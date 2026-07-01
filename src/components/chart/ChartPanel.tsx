@@ -5,6 +5,7 @@ import type { Kline, VwapAnchor } from '@/types'
 import { computeVwap, computeVwapLive } from '@/lib/vwap'
 import { computeBaseline, computeBaselineLive } from '@/lib/baseline'
 import { DrawingToolbar } from './DrawingToolbar'
+import { DrawingEditDialog } from './DrawingEditDialog'
 import { useAppStore } from '@/store'
 import { HorizontalRayPrimitive } from '@/lib/drawings/HorizontalRayPrimitive'
 import { PriceRangePrimitive } from '@/lib/drawings/PriceRangePrimitive'
@@ -64,6 +65,8 @@ export function ChartPanel({ klines, liveCandle, loading, onChartReady, vwapEnab
   const previewRef = useRef<{ primitive: AnyDrawingPrimitive; drawing: Drawing } | null>(null)
   // Overlay crosshair position (shown while a drawing tool is active)
   const [overlayCursor, setOverlayCursor] = useState<{ x: number; y: number; price: number } | null>(null)
+  // ID of the drawing being edited via double-click dialog
+  const [editingDrawingId, setEditingDrawingId] = useState<string | null>(null)
 
   const detachPreview = () => {
     if (!previewRef.current) return
@@ -306,6 +309,20 @@ export function ChartPanel({ klines, liveCandle, loading, onChartReady, vwapEnab
         useAppStore.getState().removeDrawing(useAppStore.getState().activeSymbol, drawingId)
       } else {
         useAppStore.getState().setSelectedDrawingId(id)
+      }
+    })
+
+    // Wire double-click to open the edit dialog for editable drawing types
+    chart.subscribeDblClick((param) => {
+      const state = useAppStore.getState()
+      if (state.activeTool !== 'cursor') return
+      if (!param.hoveredObjectId) return
+      const id = param.hoveredObjectId as string
+      const symbol = state.activeSymbol
+      const drawing = state.getSymbolSettings(symbol).drawings.find((d) => d.id === id)
+      if (!drawing) return
+      if (drawing.type === 'horizontal_ray' || drawing.type === 'fibonacci' || drawing.type === 'price_range') {
+        setEditingDrawingId(id)
       }
     })
 
@@ -569,9 +586,23 @@ export function ChartPanel({ klines, liveCandle, loading, onChartReady, vwapEnab
     }
   }, [liveCandle]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  const editingDrawing = editingDrawingId
+    ? drawings.find((d) => d.id === editingDrawingId) ?? null
+    : null
+
   return (
     <div className="relative flex-1 min-w-0 min-h-0 flex">
       <DrawingToolbar />
+      {editingDrawing && (
+        <DrawingEditDialog
+          drawing={editingDrawing}
+          onConfirm={(points) => {
+            updateDrawing(activeSymbol, editingDrawing.id, { points })
+            setEditingDrawingId(null)
+          }}
+          onCancel={() => setEditingDrawingId(null)}
+        />
+      )}
       <div className="relative flex-1 min-w-0 min-h-0">
         {loading && (
           <div className="absolute inset-0 flex items-center justify-center z-10 bg-[#0f1117]/80">
