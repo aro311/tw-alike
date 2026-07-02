@@ -27,6 +27,7 @@ export function DrawingToolbar() {
   const setActiveWidth = useAppStore((s) => s.setActiveWidth)
 
   const showStylePicker = activeTool !== 'cursor'
+  const showColorPicker = showStylePicker && activeTool !== 'fibonacci'
 
   return (
     <div className="flex flex-col items-center gap-1 w-9 py-2 bg-[#0f1117] border-r border-[#1e2433] z-20">
@@ -47,21 +48,25 @@ export function DrawingToolbar() {
 
       {showStylePicker && (
         <>
-          <div className="w-full h-px bg-[#1e2433] my-1" />
+          {showColorPicker && (
+            <>
+              <div className="w-full h-px bg-[#1e2433] my-1" />
 
-          <div role="group" aria-label="Color" className="flex flex-col items-center gap-1">
-            {COLORS.map((color) => (
-              <button
-                key={color}
-                title={color}
-                onClick={() => setActiveColor(color)}
-                className={`w-5 h-5 rounded-full border-2 transition-colors ${
-                  activeColor === color ? 'border-white' : 'border-transparent'
-                }`}
-                style={{ backgroundColor: color }}
-              />
-            ))}
-          </div>
+              <div role="group" aria-label="Color" className="flex flex-col items-center gap-1">
+                {COLORS.map((color) => (
+                  <button
+                    key={color}
+                    title={color}
+                    onClick={() => setActiveColor(color)}
+                    className={`w-5 h-5 rounded-full border-2 transition-colors ${
+                      activeColor === color ? 'border-white' : 'border-transparent'
+                    }`}
+                    style={{ backgroundColor: color }}
+                  />
+                ))}
+              </div>
+            </>
+          )}
 
           <div className="w-full h-px bg-[#1e2433] my-1" />
 

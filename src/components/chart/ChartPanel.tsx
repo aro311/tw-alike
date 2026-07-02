@@ -55,7 +55,15 @@ export function ChartPanel({ klines, liveCandle, loading, onChartReady, vwapEnab
   const dateRangePrimitivesRef = useRef<Map<string, DateRangePrimitive>>(new Map())
   const brushPrimitivesRef = useRef<Map<string, BrushPrimitive>>(new Map())
   // Track drag state for ControlPoint repositioning (existing drawings)
-  const dragRef = useRef<{ id: string; startY: number; startPrice: number; p1Time: number; isAnchorDrag: boolean } | null>(null)
+  const dragRef = useRef<{
+    id: string
+    startY: number
+    startPrice: number
+    p1Time: number
+    isAnchorDrag: boolean
+    fibAnchorIndex?: 0 | 1
+    fibOtherPoint?: { time: number; value: number }
+  } | null>(null)
   // Unified drag state for drawing placement — stores start pixel + initial price/time for preview updates
   const drawDragRef = useRef<{ startX: number; startY: number; p1Price: number; p1Time: number } | null>(null)
   // Brush stroke accumulation
@@ -482,6 +490,28 @@ export function ChartPanel({ klines, liveCandle, loading, onChartReady, vwapEnab
 
     const onMouseDown = (e: MouseEvent) => {
       if (!selectedDrawingId) return
+      const fibPrimitive = fibPrimitivesRef.current.get(selectedDrawingId)
+      if (fibPrimitive) {
+        const hit = fibPrimitive.hitTest(e.offsetX, e.offsetY)
+        if (!hit || hit.externalId.startsWith('delete:')) return
+        if (hit.externalId.startsWith('anchor0:') || hit.externalId.startsWith('anchor1:')) {
+          const anchorIndex = hit.externalId.startsWith('anchor0:') ? 0 : 1
+          const otherPoint = fibPrimitive.drawing.points[1 - anchorIndex]
+          const draggedPointTime = (fibPrimitive.drawing.points[anchorIndex]?.time as number) ?? 0
+          dragRef.current = {
+            id: selectedDrawingId,
+            startY: e.offsetY,
+            startPrice: series.coordinateToPrice(e.offsetY) ?? 0,
+            p1Time: draggedPointTime,
+            isAnchorDrag: true,
+            fibAnchorIndex: anchorIndex,
+            fibOtherPoint: otherPoint,
+          }
+          chart.applyOptions({ handleScroll: false, handleScale: false })
+        }
+        return
+      }
+
       const primitive = primitivesRef.current.get(selectedDrawingId)
       if (!primitive) return
       const hit = primitive.hitTest(e.offsetX, e.offsetY)
@@ -496,7 +526,15 @@ export function ChartPanel({ klines, liveCandle, loading, onChartReady, vwapEnab
     const onMouseMove = (e: MouseEvent) => {
       if (!dragRef.current) return
       const newPrice = series.coordinateToPrice(e.offsetY) ?? 0
-      if (dragRef.current.isAnchorDrag) {
+      if (dragRef.current.fibAnchorIndex !== undefined && dragRef.current.fibOtherPoint) {
+        const newTime = (chart.timeScale().coordinateToTime(e.offsetX) ?? dragRef.current.p1Time) as number
+        dragRef.current.p1Time = newTime
+        const newPoint = { time: newTime, value: newPrice }
+        const points = dragRef.current.fibAnchorIndex === 0
+          ? [newPoint, dragRef.current.fibOtherPoint]
+          : [dragRef.current.fibOtherPoint, newPoint]
+        updateDrawing(activeSymbol, dragRef.current.id, { points })
+      } else if (dragRef.current.isAnchorDrag) {
         const newTime = (chart.timeScale().coordinateToTime(e.offsetX) ?? dragRef.current.p1Time) as number
         updateDrawing(activeSymbol, dragRef.current.id, { points: [{ time: newTime, value: newPrice }] })
       } else {

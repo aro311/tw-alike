@@ -40,6 +40,18 @@ describe('DrawingToolbar color and width', () => {
     expect(screen.queryByRole('group', { name: /color/i })).not.toBeInTheDocument()
   })
 
+  it('does not show color swatches when fibonacci tool is active, since levels use a fixed palette', () => {
+    useAppStore.setState({ activeTool: 'fibonacci' })
+    render(<DrawingToolbar />)
+    expect(screen.queryByRole('group', { name: /color/i })).not.toBeInTheDocument()
+  })
+
+  it('still shows the width picker when fibonacci tool is active', () => {
+    useAppStore.setState({ activeTool: 'fibonacci' })
+    render(<DrawingToolbar />)
+    expect(screen.getByRole('group', { name: /width/i })).toBeInTheDocument()
+  })
+
   it('shows width picker when horizontal_ray tool is active', () => {
     useAppStore.setState({ activeTool: 'horizontal_ray' })
     render(<DrawingToolbar />)
