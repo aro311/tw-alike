@@ -72,3 +72,6 @@ Full-viewport layout (no scroll). Header bar → below splits into chart area (f
 
 - `CONTEXT.md` — domain glossary (canonical terms for all code)
 - `docs/PRD.md` — full product requirements and user stories
+
+## Note:
+- Never use Claude Preview

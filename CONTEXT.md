@@ -40,7 +40,7 @@ _Avoid_: Indicator settings, indicator parameters
 **FavoriteInterval**: An Interval the user has starred for quick access in the interval picker. Global across all Symbols.
 _Avoid_: Pinned interval, saved interval
 
-**Drawing**: A user-placed annotation on the Chart. Five types: HorizontalRay (single price level extending right forever), Fibonacci (retracement grid between two price points), PriceRange (full-width horizontal band between two price levels), DateRange (full-height vertical band between two timestamps), Brush (freehand path). Each Drawing carries a color and line width chosen at draw time — except Fibonacci, whose FibonacciLevels use a fixed palette instead. Persisted per Symbol in localStorage.
+**Drawing**: A user-placed annotation on the Chart. Five types: HorizontalRay (single price level extending right forever), Fibonacci (retracement grid between two price points), PriceRange (time-bounded box between two price-time anchor points, with a center directional arrow and price/percentage label), DateRange (full-height vertical band between two timestamps), Brush (freehand path). Each Drawing carries a color and line width chosen at draw time — except Fibonacci, whose FibonacciLevels use a fixed palette instead. Persisted per Symbol in localStorage.
 _Avoid_: Annotation, markup, line, overlay
 
 **FibonacciLevel**: One of 7 fixed retracement ratios (`0, 0.236, 0.382, 0.5, 0.618, 0.786, 1`) rendered within a Fibonacci Drawing. Each FibonacciLevel has its own fixed color and price label; the set of ratios and their colors are not user-configurable.

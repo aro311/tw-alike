@@ -64,9 +64,10 @@ export function ChartPanel({ klines, liveCandle, loading, onChartReady, vwapEnab
   // Read drawings directly from symbolSettings to avoid creating a new object on every render
   const drawings = useAppStore((s) => s.symbolSettings[s.activeSymbol]?.drawings ?? EMPTY_DRAWINGS)
 
-  // Map of drawing id → primitive instance (HorizontalRayPrimitive or PriceRangePrimitive)
-  const primitivesRef = useRef<Map<string, HorizontalRayPrimitive | PriceRangePrimitive>>(new Map())
+  // Map of drawing id → primitive instance (HorizontalRayPrimitive only)
+  const primitivesRef = useRef<Map<string, HorizontalRayPrimitive>>(new Map())
   const fibPrimitivesRef = useRef<Map<string, FibonacciPrimitive>>(new Map())
+  const priceRangePrimitivesRef = useRef<Map<string, PriceRangePrimitive>>(new Map())
   const dateRangePrimitivesRef = useRef<Map<string, DateRangePrimitive>>(new Map())
   const brushPrimitivesRef = useRef<Map<string, BrushPrimitive>>(new Map())
   // Track drag state for ControlPoint repositioning (existing drawings)
@@ -78,6 +79,9 @@ export function ChartPanel({ klines, liveCandle, loading, onChartReady, vwapEnab
     isAnchorDrag: boolean
     fibAnchorIndex?: 0 | 1
     fibOtherPoint?: { time: number; value: number }
+    priceRangeAnchorIndex?: 0 | 1
+    priceRangeOtherPoint?: { time: number; value: number }
+    priceRangeInteriorPoints?: [{ time: number; value: number }, { time: number; value: number }]
   } | null>(null)
   // Click-click placement state — set on first click, cleared on second click or Escape
   const drawPlacementRef = useRef<{ startX: number; startY: number; p1Price: number; p1Time: number; lastValidEndTime: number } | null>(null)
@@ -156,7 +160,7 @@ export function ChartPanel({ klines, liveCandle, loading, onChartReady, vwapEnab
       let primitive: AnyDrawingPrimitive
       let drawing: Drawing
       if (activeTool === 'price_range') {
-        drawing = { id: '__preview__', type: 'price_range', points: [{ time: 0, value: price }, { time: 0, value: price }], color: activeColor, width: activeWidth }
+        drawing = { id: '__preview__', type: 'price_range', points: [{ time: time, value: price }, { time: time, value: price }], color: activeColor, width: activeWidth }
         primitive = new PriceRangePrimitive(drawing, () => {}, () => {})
       } else if (activeTool === 'fibonacci') {
         drawing = { id: '__preview__', type: 'fibonacci', points: [{ time, value: price }, { time, value: price }], color: activeColor, width: activeWidth }
@@ -178,7 +182,7 @@ export function ChartPanel({ klines, liveCandle, loading, onChartReady, vwapEnab
         addDrawing(activeSymbol, {
           id: crypto.randomUUID(),
           type: 'price_range',
-          points: [{ time: 0, value: placement.p1Price }, { time: 0, value: price }],
+          points: [{ time: placement.p1Time, value: placement.p1Price }, { time: endTime, value: price }],
           color: activeColor,
           width: activeWidth,
         })
@@ -229,7 +233,7 @@ export function ChartPanel({ klines, liveCandle, loading, onChartReady, vwapEnab
 
     let updatedPoints: { time: number; value: number }[]
     if (activeTool === 'price_range') {
-      updatedPoints = [{ time: 0, value: drag.p1Price }, { time: 0, value: price }]
+      updatedPoints = [{ time: drag.p1Time, value: drag.p1Price }, { time: time, value: price }]
     } else if (activeTool === 'fibonacci') {
       updatedPoints = [{ time: drag.p1Time, value: drag.p1Price }, { time, value: price }]
     } else if (activeTool === 'date_range') {
@@ -388,11 +392,10 @@ export function ChartPanel({ klines, liveCandle, loading, onChartReady, vwapEnab
     const series = seriesRef.current
     if (!series) return
 
-    // --- horizontal_ray + price_range ---
+    // --- horizontal_ray ---
     const current = primitivesRef.current
     const currentIds = new Set(current.keys())
-    const supportedTypes = new Set(['horizontal_ray', 'price_range'])
-    const newIds = new Set(drawings.filter(d => supportedTypes.has(d.type)).map(d => d.id))
+    const newIds = new Set(drawings.filter(d => d.type === 'horizontal_ray').map(d => d.id))
 
     for (const id of currentIds) {
       if (!newIds.has(id)) {
@@ -416,19 +419,35 @@ export function ChartPanel({ klines, liveCandle, loading, onChartReady, vwapEnab
           current.get(drawing.id)!.updateDrawing(drawing)
         }
         current.get(drawing.id)!.setSelected(selectedDrawingId === drawing.id)
-      } else if (drawing.type === 'price_range') {
-        if (!current.has(drawing.id)) {
+      }
+    }
+
+    // --- price_range ---
+    const prCurrent = priceRangePrimitivesRef.current
+    const prCurrentIds = new Set(prCurrent.keys())
+    const newPrIds = new Set(drawings.filter(d => d.type === 'price_range').map(d => d.id))
+
+    for (const id of prCurrentIds) {
+      if (!newPrIds.has(id)) {
+        series.detachPrimitive(prCurrent.get(id)!)
+        prCurrent.delete(id)
+      }
+    }
+
+    for (const drawing of drawings) {
+      if (drawing.type === 'price_range') {
+        if (!prCurrent.has(drawing.id)) {
           const primitive = new PriceRangePrimitive(
             drawing,
             (id) => setSelectedDrawingId(id),
             (id) => removeDrawing(activeSymbol, id),
           )
           series.attachPrimitive(primitive)
-          current.set(drawing.id, primitive)
+          prCurrent.set(drawing.id, primitive)
         } else {
-          current.get(drawing.id)!.updateDrawing(drawing)
+          prCurrent.get(drawing.id)!.updateDrawing(drawing)
         }
-        current.get(drawing.id)!.setSelected(selectedDrawingId === drawing.id)
+        prCurrent.get(drawing.id)!.setSelected(selectedDrawingId === drawing.id)
       }
     }
 
@@ -538,6 +557,44 @@ export function ChartPanel({ klines, liveCandle, loading, onChartReady, vwapEnab
         return
       }
 
+      const prPrimitive = priceRangePrimitivesRef.current.get(selectedDrawingId)
+      if (prPrimitive) {
+        const hit = prPrimitive.hitTest(e.offsetX, e.offsetY)
+        if (!hit) return
+        const startPrice = series.coordinateToPrice(e.offsetY) ?? 0
+        const startTime = (coordinateToTimeExtrapolated(chart, e.offsetX, klines) ?? 0) as number
+        if (hit.externalId.startsWith('anchor0:') || hit.externalId.startsWith('anchor1:')) {
+          const anchorIndex = hit.externalId.startsWith('anchor0:') ? 0 : 1
+          const otherPoint = prPrimitive.drawing.points[1 - anchorIndex]
+          dragRef.current = {
+            id: selectedDrawingId,
+            startY: e.offsetY,
+            startPrice,
+            p1Time: startTime,
+            isAnchorDrag: true,
+            priceRangeAnchorIndex: anchorIndex,
+            priceRangeOtherPoint: otherPoint,
+          }
+        } else {
+          // Interior drag — translate both points
+          const p0 = prPrimitive.drawing.points[0]
+          const p1 = prPrimitive.drawing.points[1]
+          dragRef.current = {
+            id: selectedDrawingId,
+            startY: e.offsetY,
+            startPrice,
+            p1Time: startTime,
+            isAnchorDrag: false,
+            priceRangeInteriorPoints: [
+              { time: p0?.time as number ?? 0, value: p0?.value ?? 0 },
+              { time: p1?.time as number ?? 0, value: p1?.value ?? 0 },
+            ],
+          }
+        }
+        chart.applyOptions({ handleScroll: false, handleScale: false })
+        return
+      }
+
       const primitive = primitivesRef.current.get(selectedDrawingId)
       if (!primitive) return
       const hit = primitive.hitTest(e.offsetX, e.offsetY)
@@ -560,6 +617,25 @@ export function ChartPanel({ klines, liveCandle, loading, onChartReady, vwapEnab
           ? [newPoint, dragRef.current.fibOtherPoint]
           : [dragRef.current.fibOtherPoint, newPoint]
         updateDrawing(activeSymbol, dragRef.current.id, { points })
+      } else if (dragRef.current.priceRangeAnchorIndex !== undefined && dragRef.current.priceRangeOtherPoint) {
+        const newTime = coordinateToTimeExtrapolated(chart, e.offsetX, klines) ?? dragRef.current.p1Time
+        dragRef.current.p1Time = newTime
+        const newPoint = { time: newTime, value: newPrice }
+        const points = dragRef.current.priceRangeAnchorIndex === 0
+          ? [newPoint, dragRef.current.priceRangeOtherPoint]
+          : [dragRef.current.priceRangeOtherPoint, newPoint]
+        updateDrawing(activeSymbol, dragRef.current.id, { points })
+      } else if (dragRef.current.priceRangeInteriorPoints) {
+        const newTime = (coordinateToTimeExtrapolated(chart, e.offsetX, klines) ?? dragRef.current.p1Time) as number
+        const deltaTime = newTime - dragRef.current.p1Time
+        const deltaPrice = newPrice - dragRef.current.startPrice
+        const [ip0, ip1] = dragRef.current.priceRangeInteriorPoints
+        updateDrawing(activeSymbol, dragRef.current.id, {
+          points: [
+            { time: ip0.time + deltaTime, value: ip0.value + deltaPrice },
+            { time: ip1.time + deltaTime, value: ip1.value + deltaPrice },
+          ],
+        })
       } else if (dragRef.current.isAnchorDrag) {
         const newTime = coordinateToTimeExtrapolated(chart, e.offsetX, klines) ?? dragRef.current.p1Time
         updateDrawing(activeSymbol, dragRef.current.id, { points: [{ time: newTime, value: newPrice }] })
