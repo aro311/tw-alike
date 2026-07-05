@@ -5,11 +5,35 @@ import type {
   IPrimitivePaneRenderer,
   PrimitiveHoveredItem,
   Time,
+  Logical,
+  IChartApi,
 } from 'lightweight-charts'
 
 type DrawTarget = Parameters<IPrimitivePaneRenderer['draw']>[0]
 import type { Drawing } from '@/types'
 import { FIB_LEVELS, FIB_LEVEL_COLORS, getFibLevelPrice, getFibBoxTimeRange, getTopmostAnchorIndex, formatFibLabel } from './fibonacciLevels'
+
+function timeToXExtrapolated(chart: IChartApi, time: number, fallback: number): number {
+  const rawX = chart.timeScale().timeToCoordinate(time as Time)
+  if (rawX !== null) return rawX
+
+  const visRange = chart.timeScale().getVisibleRange()
+  if (!visRange) return fallback
+  const tFrom = visRange.from as number
+  const tTo = visRange.to as number
+  if (tFrom === tTo) return fallback
+
+  const xFrom = chart.timeScale().timeToCoordinate(tFrom as Time)
+  const xTo = chart.timeScale().timeToCoordinate(tTo as Time)
+  if (xFrom === null || xTo === null) return fallback
+
+  const lFrom = chart.timeScale().coordinateToLogical(xFrom) as unknown as number
+  const lTo = chart.timeScale().coordinateToLogical(xTo) as unknown as number
+  if (lFrom === null || lTo === null || lTo === lFrom) return fallback
+
+  const anchorLogical = lTo + ((time - tTo) / (tTo - tFrom)) * (lTo - lFrom)
+  return chart.timeScale().logicalToCoordinate(anchorLogical as unknown as Logical) ?? fallback
+}
 
 const DELETE_ICON_SIZE = 16
 const DELETE_ICON_OFFSET = 20
@@ -51,8 +75,9 @@ class FibonacciRenderer implements IPrimitivePaneRenderer {
       const points = drawing.points
 
       const { start, end } = getFibBoxTimeRange(points)
-      const rawStartX = chart.timeScale().timeToCoordinate(start as Time) ?? 0
-      const rawEndX = chart.timeScale().timeToCoordinate(end as Time) ?? 0
+      const chartWidth = chart.timeScale().width()
+      const rawStartX = timeToXExtrapolated(chart, start as number, 0)
+      const rawEndX = timeToXExtrapolated(chart, end as number, chartWidth)
       const startX = Math.max(0, Math.min(rawStartX, rawEndX)) * hr
       const endX = Math.min(chart.timeScale().width(), Math.max(rawStartX, rawEndX)) * hr
       if (startX >= endX) return
@@ -71,7 +96,7 @@ class FibonacciRenderer implements IPrimitivePaneRenderer {
 
       // Dashed trend line directly between the two anchors
       const anchorScreens = points.map((p) => ({
-        x: (chart.timeScale().timeToCoordinate(p.time as Time) ?? 0) * hr,
+        x: timeToXExtrapolated(chart, p.time as number, chartWidth) * hr,
         y: (series.priceToCoordinate(p.value) ?? 0) * vr,
       }))
       ctx.strokeStyle = TREND_LINE_COLOR
@@ -216,7 +241,7 @@ export class FibonacciPrimitive implements ISeriesPrimitive<Time> {
     if (_selected) {
       for (const [index, point] of points.entries()) {
         const anchorY = _param.series.priceToCoordinate(point.value) ?? -9999
-        const anchorX = _param.chart.timeScale().timeToCoordinate(point.time as Time) ?? -9999
+        const anchorX = timeToXExtrapolated(_param.chart, point.time as number, _param.chart.timeScale().width())
         if (Math.hypot(x - anchorX, y - anchorY) <= HANDLE_RADIUS + 4) {
           return { externalId: `anchor${index}:${drawing.id}`, cursorStyle: 'move', zOrder: 'top', isBackground: false }
         }
@@ -239,8 +264,8 @@ export class FibonacciPrimitive implements ISeriesPrimitive<Time> {
     }
 
     const { start, end } = getFibBoxTimeRange(points)
-    const rawStartX = _param.chart.timeScale().timeToCoordinate(start as Time) ?? 0
-    const rawEndX = _param.chart.timeScale().timeToCoordinate(end as Time) ?? 0
+    const rawStartX = timeToXExtrapolated(_param.chart, start as number, 0)
+    const rawEndX = timeToXExtrapolated(_param.chart, end as number, _param.chart.timeScale().width())
     const boxLeft = Math.min(rawStartX, rawEndX)
     const boxRight = Math.max(rawStartX, rawEndX)
     if (x < boxLeft || x > boxRight) return null

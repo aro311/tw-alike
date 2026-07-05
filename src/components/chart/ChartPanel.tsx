@@ -16,6 +16,21 @@ import type { Drawing } from '@/types'
 
 const EMPTY_DRAWINGS: Drawing[] = []
 
+function coordinateToTimeExtrapolated(chart: IChartApi, offsetX: number, klines: Kline[]): number | null {
+  const rawTime = chart.timeScale().coordinateToTime(offsetX)
+  if (rawTime !== null) return rawTime as number
+  if (klines.length < 2) return null
+  const lastBar = klines[klines.length - 1]
+  const prevBar = klines[klines.length - 2]
+  const barInterval = lastBar.time - prevBar.time
+  const lastBarX = chart.timeScale().timeToCoordinate(lastBar.time as Time)
+  const prevBarX = chart.timeScale().timeToCoordinate(prevBar.time as Time)
+  if (lastBarX === null || prevBarX === null || lastBarX === prevBarX) return null
+  const pixelsPerBar = lastBarX - prevBarX
+  const barsOffset = Math.round((offsetX - lastBarX) / pixelsPerBar)
+  return lastBar.time + barsOffset * barInterval
+}
+
 interface Props {
   klines: Kline[]
   liveCandle: Kline | null
@@ -65,7 +80,7 @@ export function ChartPanel({ klines, liveCandle, loading, onChartReady, vwapEnab
     fibOtherPoint?: { time: number; value: number }
   } | null>(null)
   // Unified drag state for drawing placement — stores start pixel + initial price/time for preview updates
-  const drawDragRef = useRef<{ startX: number; startY: number; p1Price: number; p1Time: number } | null>(null)
+  const drawDragRef = useRef<{ startX: number; startY: number; p1Price: number; p1Time: number; lastValidEndTime: number } | null>(null)
   // Brush stroke accumulation
   const brushInProgressRef = useRef<{ time: number; value: number }[]>([])
   // Live preview primitive (attached on mousedown, detached on mouseup/Escape)
@@ -105,7 +120,7 @@ export function ChartPanel({ klines, liveCandle, loading, onChartReady, vwapEnab
     if (activeTool === 'cursor' || !series || !chart) return
 
     const price = series.coordinateToPrice(e.nativeEvent.offsetY) ?? 0
-    const time = (chart.timeScale().coordinateToTime(e.nativeEvent.offsetX) ?? 0) as number
+    const time = (coordinateToTimeExtrapolated(chart, e.nativeEvent.offsetX, klines) ?? 0) as number
 
     if (activeTool === 'horizontal_ray') {
       addDrawing(activeSymbol, {
@@ -128,7 +143,7 @@ export function ChartPanel({ klines, liveCandle, loading, onChartReady, vwapEnab
       return
     }
 
-    drawDragRef.current = { startX: e.nativeEvent.offsetX, startY: e.nativeEvent.offsetY, p1Price: price, p1Time: time }
+    drawDragRef.current = { startX: e.nativeEvent.offsetX, startY: e.nativeEvent.offsetY, p1Price: price, p1Time: time, lastValidEndTime: time }
 
     let primitive: AnyDrawingPrimitive
     let drawing: Drawing
@@ -152,7 +167,8 @@ export function ChartPanel({ klines, liveCandle, loading, onChartReady, vwapEnab
     if (!series || !chart) return
 
     const price = series.coordinateToPrice(e.nativeEvent.offsetY) ?? 0
-    const time = (chart.timeScale().coordinateToTime(e.nativeEvent.offsetX) ?? 0) as number
+    const time = (coordinateToTimeExtrapolated(chart, e.nativeEvent.offsetX, klines) ?? drawDragRef.current?.lastValidEndTime ?? 0) as number
+    if (drawDragRef.current) drawDragRef.current.lastValidEndTime = time
 
     setOverlayCursor({ x: e.nativeEvent.offsetX, y: e.nativeEvent.offsetY, price })
 
@@ -218,7 +234,7 @@ export function ChartPanel({ klines, liveCandle, loading, onChartReady, vwapEnab
       })
     } else if (activeTool === 'fibonacci') {
       const price2 = seriesRef.current?.coordinateToPrice(e.nativeEvent.offsetY) ?? 0
-      const time2 = (chartRef.current?.timeScale().coordinateToTime(e.nativeEvent.offsetX) ?? 0) as number
+      const time2 = chartRef.current ? (coordinateToTimeExtrapolated(chartRef.current, e.nativeEvent.offsetX, klines) ?? drag.lastValidEndTime) : drag.lastValidEndTime
       addDrawing(activeSymbol, {
         id: crypto.randomUUID(),
         type: 'fibonacci',
@@ -227,7 +243,7 @@ export function ChartPanel({ klines, liveCandle, loading, onChartReady, vwapEnab
         width: activeWidth,
       })
     } else if (activeTool === 'date_range') {
-      const time2 = (chartRef.current?.timeScale().coordinateToTime(e.nativeEvent.offsetX) ?? 0) as number
+      const time2 = chartRef.current ? (coordinateToTimeExtrapolated(chartRef.current, e.nativeEvent.offsetX, klines) ?? drag.lastValidEndTime) : drag.lastValidEndTime
       addDrawing(activeSymbol, {
         id: crypto.randomUUID(),
         type: 'date_range',
@@ -527,7 +543,7 @@ export function ChartPanel({ klines, liveCandle, loading, onChartReady, vwapEnab
       if (!dragRef.current) return
       const newPrice = series.coordinateToPrice(e.offsetY) ?? 0
       if (dragRef.current.fibAnchorIndex !== undefined && dragRef.current.fibOtherPoint) {
-        const newTime = (chart.timeScale().coordinateToTime(e.offsetX) ?? dragRef.current.p1Time) as number
+        const newTime = coordinateToTimeExtrapolated(chart, e.offsetX, klines) ?? dragRef.current.p1Time
         dragRef.current.p1Time = newTime
         const newPoint = { time: newTime, value: newPrice }
         const points = dragRef.current.fibAnchorIndex === 0
@@ -535,7 +551,7 @@ export function ChartPanel({ klines, liveCandle, loading, onChartReady, vwapEnab
           : [dragRef.current.fibOtherPoint, newPoint]
         updateDrawing(activeSymbol, dragRef.current.id, { points })
       } else if (dragRef.current.isAnchorDrag) {
-        const newTime = (chart.timeScale().coordinateToTime(e.offsetX) ?? dragRef.current.p1Time) as number
+        const newTime = coordinateToTimeExtrapolated(chart, e.offsetX, klines) ?? dragRef.current.p1Time
         updateDrawing(activeSymbol, dragRef.current.id, { points: [{ time: newTime, value: newPrice }] })
       } else {
         updateDrawing(activeSymbol, dragRef.current.id, { points: [{ time: dragRef.current.p1Time, value: newPrice }] })
