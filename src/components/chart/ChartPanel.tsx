@@ -73,6 +73,7 @@ export function ChartPanel({ klines, liveCandle, loading, onChartReady, vwapEnab
   // Track drag state for ControlPoint repositioning (existing drawings)
   const dragRef = useRef<{
     id: string
+    pointerId: number
     startY: number
     startPrice: number
     p1Time: number
@@ -83,6 +84,7 @@ export function ChartPanel({ klines, liveCandle, loading, onChartReady, vwapEnab
     priceRangeOtherPoint?: { time: number; value: number }
     priceRangeInteriorPoints?: [{ time: number; value: number }, { time: number; value: number }]
   } | null>(null)
+  const overlayPointerIdRef = useRef<number | null>(null)
   // Click-click placement state — set on first click, cleared on second click or Escape
   const drawPlacementRef = useRef<{ startX: number; startY: number; p1Price: number; p1Time: number; lastValidEndTime: number } | null>(null)
   // Brush stroke accumulation
@@ -93,7 +95,7 @@ export function ChartPanel({ klines, liveCandle, loading, onChartReady, vwapEnab
   // Overlay crosshair position (shown while a drawing tool is active)
   const [overlayCursor, setOverlayCursor] = useState<{ x: number; y: number; price: number } | null>(null)
   // True between first and second click while a two-point drawing is being placed
-  const [isPlacing, setIsPlacing] = useState(false)
+
   // ID of the drawing being edited via double-click dialog
   const [editingDrawingId, setEditingDrawingId] = useState<string | null>(null)
 
@@ -109,7 +111,6 @@ export function ChartPanel({ klines, liveCandle, loading, onChartReady, vwapEnab
         detachPreview()
         drawPlacementRef.current = null
         brushInProgressRef.current = []
-        setIsPlacing(false)
         // keep activeTool unchanged so user can try again immediately
       } else if ((e.key === 'Delete' || e.key === 'Backspace') && selectedDrawingId) {
         removeDrawing(activeSymbol, selectedDrawingId)
@@ -121,93 +122,27 @@ export function ChartPanel({ klines, liveCandle, loading, onChartReady, vwapEnab
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [selectedDrawingId, activeSymbol, removeDrawing, undoLastDrawing])
 
-  const handleOverlayMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+  const handleOverlayPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (overlayPointerIdRef.current !== null) return
+    overlayPointerIdRef.current = e.pointerId
+    e.currentTarget.setPointerCapture(e.pointerId)
     const series = seriesRef.current
-    const chart = chartRef.current
-    if (activeTool === 'cursor' || !series || !chart) return
-
-    const price = series.coordinateToPrice(e.nativeEvent.offsetY) ?? 0
-    const time = (coordinateToTimeExtrapolated(chart, e.nativeEvent.offsetX, klines) ?? 0) as number
-
-    if (activeTool === 'horizontal_ray') {
-      addDrawing(activeSymbol, {
-        id: crypto.randomUUID(),
-        type: 'horizontal_ray',
-        points: [{ time, value: price }],
-        color: activeColor,
-        width: activeWidth,
-      })
-      setActiveTool('cursor')
-      return
-    }
+    if (activeTool === 'cursor' || !series) return
 
     if (activeTool === 'brush') {
+      const price = series.coordinateToPrice(e.nativeEvent.offsetY) ?? 0
+      const time = (coordinateToTimeExtrapolated(chartRef.current!, e.nativeEvent.offsetX, klines) ?? 0) as number
       brushInProgressRef.current = [{ time, value: price }]
       const drawing: Drawing = { id: '__preview__', type: 'brush', points: [{ time, value: price }], color: activeColor, width: activeWidth }
       const primitive = new BrushPrimitive(drawing, () => {})
       series.attachPrimitive(primitive)
       previewRef.current = { primitive, drawing }
-      return
     }
-
-    const placement = drawPlacementRef.current
-
-    if (!placement) {
-      // First click — anchor start point and show live preview
-      drawPlacementRef.current = { startX: e.nativeEvent.offsetX, startY: e.nativeEvent.offsetY, p1Price: price, p1Time: time, lastValidEndTime: time }
-      setIsPlacing(true)
-
-      let primitive: AnyDrawingPrimitive
-      let drawing: Drawing
-      if (activeTool === 'price_range') {
-        drawing = { id: '__preview__', type: 'price_range', points: [{ time: time, value: price }, { time: time, value: price }], color: activeColor, width: activeWidth }
-        primitive = new PriceRangePrimitive(drawing, () => {}, () => {})
-      } else if (activeTool === 'fibonacci') {
-        drawing = { id: '__preview__', type: 'fibonacci', points: [{ time, value: price }, { time, value: price }], color: activeColor, width: activeWidth }
-        primitive = new FibonacciPrimitive(drawing, () => {}, () => {})
-      } else { // date_range
-        drawing = { id: '__preview__', type: 'date_range', points: [{ time, value: 0 }, { time, value: 0 }], color: activeColor, width: activeWidth }
-        primitive = new DateRangePrimitive(drawing)
-      }
-      series.attachPrimitive(primitive)
-      previewRef.current = { primitive, drawing }
-    } else {
-      // Second click — commit the drawing
-      const endTime = (coordinateToTimeExtrapolated(chart, e.nativeEvent.offsetX, klines) ?? placement.lastValidEndTime) as number
-      detachPreview()
-      drawPlacementRef.current = null
-      setIsPlacing(false)
-
-      if (activeTool === 'price_range') {
-        addDrawing(activeSymbol, {
-          id: crypto.randomUUID(),
-          type: 'price_range',
-          points: [{ time: placement.p1Time, value: placement.p1Price }, { time: endTime, value: price }],
-          color: activeColor,
-          width: activeWidth,
-        })
-      } else if (activeTool === 'fibonacci') {
-        addDrawing(activeSymbol, {
-          id: crypto.randomUUID(),
-          type: 'fibonacci',
-          points: [{ time: placement.p1Time, value: placement.p1Price }, { time: endTime, value: price }],
-          color: activeColor,
-          width: activeWidth,
-        })
-      } else { // date_range
-        addDrawing(activeSymbol, {
-          id: crypto.randomUUID(),
-          type: 'date_range',
-          points: [{ time: placement.p1Time, value: 0 }, { time: endTime, value: 0 }],
-          color: activeColor,
-          width: activeWidth,
-        })
-      }
-      setActiveTool('cursor')
-    }
+    // All other tools: logic runs on pointerUp
   }
 
-  const handleOverlayMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+  const handleOverlayPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (overlayPointerIdRef.current !== null && e.pointerId !== overlayPointerIdRef.current) return
     const series = seriesRef.current
     const chart = chartRef.current
     if (!series || !chart) return
@@ -244,20 +179,65 @@ export function ChartPanel({ klines, liveCandle, loading, onChartReady, vwapEnab
     preview.primitive.updateDrawing({ ...preview.drawing, points: updatedPoints })
   }
 
-  const handleOverlayMouseUp = () => {
-    if (activeTool !== 'brush') return
-    detachPreview()
-    const pts = brushInProgressRef.current
-    brushInProgressRef.current = []
-    if (pts.length < 2) return
-    addDrawing(activeSymbol, {
-      id: crypto.randomUUID(),
-      type: 'brush',
-      points: pts,
-      color: activeColor,
-      width: activeWidth,
-    })
-    setActiveTool('cursor')
+  const handleOverlayPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.pointerId !== overlayPointerIdRef.current) return
+    overlayPointerIdRef.current = null
+    const series = seriesRef.current
+    const chart = chartRef.current
+    if (activeTool === 'cursor' || !series || !chart) return
+
+    const price = series.coordinateToPrice(e.nativeEvent.offsetY) ?? 0
+    const time = (coordinateToTimeExtrapolated(chart, e.nativeEvent.offsetX, klines) ?? 0) as number
+
+    if (activeTool === 'brush') {
+      detachPreview()
+      const pts = brushInProgressRef.current
+      brushInProgressRef.current = []
+      if (pts.length < 2) return
+      addDrawing(activeSymbol, { id: crypto.randomUUID(), type: 'brush', points: pts, color: activeColor, width: activeWidth })
+      setActiveTool('cursor')
+      return
+    }
+
+    if (activeTool === 'horizontal_ray') {
+      addDrawing(activeSymbol, { id: crypto.randomUUID(), type: 'horizontal_ray', points: [{ time, value: price }], color: activeColor, width: activeWidth })
+      setActiveTool('cursor')
+      return
+    }
+
+    const placement = drawPlacementRef.current
+
+    if (!placement) {
+      // First tap — anchor first point, attach preview
+      drawPlacementRef.current = { startX: e.nativeEvent.offsetX, startY: e.nativeEvent.offsetY, p1Price: price, p1Time: time, lastValidEndTime: time }
+      let primitive: AnyDrawingPrimitive
+      let drawing: Drawing
+      if (activeTool === 'price_range') {
+        drawing = { id: '__preview__', type: 'price_range', points: [{ time, value: price }, { time, value: price }], color: activeColor, width: activeWidth }
+        primitive = new PriceRangePrimitive(drawing, () => {}, () => {})
+      } else if (activeTool === 'fibonacci') {
+        drawing = { id: '__preview__', type: 'fibonacci', points: [{ time, value: price }, { time, value: price }], color: activeColor, width: activeWidth }
+        primitive = new FibonacciPrimitive(drawing, () => {}, () => {})
+      } else { // date_range
+        drawing = { id: '__preview__', type: 'date_range', points: [{ time, value: 0 }, { time, value: 0 }], color: activeColor, width: activeWidth }
+        primitive = new DateRangePrimitive(drawing)
+      }
+      series.attachPrimitive(primitive)
+      previewRef.current = { primitive, drawing }
+    } else {
+      // Second tap — commit
+      const endTime = (coordinateToTimeExtrapolated(chart, e.nativeEvent.offsetX, klines) ?? placement.lastValidEndTime) as number
+      detachPreview()
+      drawPlacementRef.current = null
+      if (activeTool === 'price_range') {
+        addDrawing(activeSymbol, { id: crypto.randomUUID(), type: 'price_range', points: [{ time: placement.p1Time, value: placement.p1Price }, { time: endTime, value: price }], color: activeColor, width: activeWidth })
+      } else if (activeTool === 'fibonacci') {
+        addDrawing(activeSymbol, { id: crypto.randomUUID(), type: 'fibonacci', points: [{ time: placement.p1Time, value: placement.p1Price }, { time: endTime, value: price }], color: activeColor, width: activeWidth })
+      } else { // date_range
+        addDrawing(activeSymbol, { id: crypto.randomUUID(), type: 'date_range', points: [{ time: placement.p1Time, value: 0 }, { time: endTime, value: 0 }], color: activeColor, width: activeWidth })
+      }
+      setActiveTool('cursor')
+    }
   }
 
   // Cancel any in-progress placement when the active tool changes
@@ -265,7 +245,6 @@ export function ChartPanel({ klines, liveCandle, loading, onChartReady, vwapEnab
     if (drawPlacementRef.current) {
       detachPreview()
       drawPlacementRef.current = null
-      setIsPlacing(false)
     }
   }, [activeTool])
 
@@ -275,7 +254,7 @@ export function ChartPanel({ klines, liveCandle, loading, onChartReady, vwapEnab
     const chart = createChart(containerRef.current, {
       layout: {
         background: { type: ColorType.Solid, color: '#0f1117' },
-        textColor: '#94a3b8',
+        textColor: '#3b82f6',
       },
       grid: {
         vertLines: { color: '#1e2433' },
@@ -284,7 +263,7 @@ export function ChartPanel({ klines, liveCandle, loading, onChartReady, vwapEnab
       crosshair: {
         mode: CrosshairMode.Normal,
         horzLine: {
-          color: '#94a3b8',
+          color: '#3b82f6',
           width: 1,
           style: LineStyle.Dashed,
           visible: true,
@@ -292,7 +271,7 @@ export function ChartPanel({ klines, liveCandle, loading, onChartReady, vwapEnab
           labelBackgroundColor: '#1e2433',
         },
         vertLine: {
-          color: '#94a3b8',
+          color: '#3b82f6',
           width: 1,
           style: LineStyle.Dashed,
           visible: true,
@@ -533,7 +512,8 @@ export function ChartPanel({ klines, liveCandle, loading, onChartReady, vwapEnab
     const chart = chartRef.current
     if (!container || !series || !chart) return
 
-    const onMouseDown = (e: MouseEvent) => {
+    const onPointerDown = (e: PointerEvent) => {
+      if (dragRef.current) return
       if (!selectedDrawingId) return
       const fibPrimitive = fibPrimitivesRef.current.get(selectedDrawingId)
       if (fibPrimitive) {
@@ -543,8 +523,10 @@ export function ChartPanel({ klines, liveCandle, loading, onChartReady, vwapEnab
           const anchorIndex = hit.externalId.startsWith('anchor0:') ? 0 : 1
           const otherPoint = fibPrimitive.drawing.points[1 - anchorIndex]
           const draggedPointTime = (fibPrimitive.drawing.points[anchorIndex]?.time as number) ?? 0
+          container.setPointerCapture(e.pointerId)
           dragRef.current = {
             id: selectedDrawingId,
+            pointerId: e.pointerId,
             startY: e.offsetY,
             startPrice: series.coordinateToPrice(e.offsetY) ?? 0,
             p1Time: draggedPointTime,
@@ -566,8 +548,10 @@ export function ChartPanel({ klines, liveCandle, loading, onChartReady, vwapEnab
         if (hit.externalId.startsWith('anchor0:') || hit.externalId.startsWith('anchor1:')) {
           const anchorIndex = hit.externalId.startsWith('anchor0:') ? 0 : 1
           const otherPoint = prPrimitive.drawing.points[1 - anchorIndex]
+          container.setPointerCapture(e.pointerId)
           dragRef.current = {
             id: selectedDrawingId,
+            pointerId: e.pointerId,
             startY: e.offsetY,
             startPrice,
             p1Time: startTime,
@@ -579,8 +563,10 @@ export function ChartPanel({ klines, liveCandle, loading, onChartReady, vwapEnab
           // Interior drag — translate both points
           const p0 = prPrimitive.drawing.points[0]
           const p1 = prPrimitive.drawing.points[1]
+          container.setPointerCapture(e.pointerId)
           dragRef.current = {
             id: selectedDrawingId,
+            pointerId: e.pointerId,
             startY: e.offsetY,
             startPrice,
             p1Time: startTime,
@@ -602,12 +588,13 @@ export function ChartPanel({ klines, liveCandle, loading, onChartReady, vwapEnab
       const price = series.coordinateToPrice(e.offsetY) ?? 0
       const existingTime = (primitive.drawing.points[0]?.time as number) ?? 0
       const isAnchorDrag = hit.externalId.startsWith('anchor:')
-      dragRef.current = { id: selectedDrawingId, startY: e.offsetY, startPrice: price, p1Time: existingTime, isAnchorDrag }
+      container.setPointerCapture(e.pointerId)
+      dragRef.current = { id: selectedDrawingId, pointerId: e.pointerId, startY: e.offsetY, startPrice: price, p1Time: existingTime, isAnchorDrag }
       chart.applyOptions({ handleScroll: false, handleScale: false })
     }
 
-    const onMouseMove = (e: MouseEvent) => {
-      if (!dragRef.current) return
+    const onPointerMove = (e: PointerEvent) => {
+      if (!dragRef.current || e.pointerId !== dragRef.current.pointerId) return
       const newPrice = series.coordinateToPrice(e.offsetY) ?? 0
       if (dragRef.current.fibAnchorIndex !== undefined && dragRef.current.fibOtherPoint) {
         const newTime = coordinateToTimeExtrapolated(chart, e.offsetX, klines) ?? dragRef.current.p1Time
@@ -644,18 +631,19 @@ export function ChartPanel({ klines, liveCandle, loading, onChartReady, vwapEnab
       }
     }
 
-    const onMouseUp = () => {
-      if (dragRef.current) chart.applyOptions({ handleScroll: true, handleScale: true })
+    const onPointerUp = (e: PointerEvent) => {
+      if (!dragRef.current || e.pointerId !== dragRef.current.pointerId) return
+      chart.applyOptions({ handleScroll: true, handleScale: true })
       dragRef.current = null
     }
 
-    container.addEventListener('mousedown', onMouseDown)
-    container.addEventListener('mousemove', onMouseMove)
-    container.addEventListener('mouseup', onMouseUp)
+    container.addEventListener('pointerdown', onPointerDown)
+    container.addEventListener('pointermove', onPointerMove)
+    container.addEventListener('pointerup', onPointerUp)
     return () => {
-      container.removeEventListener('mousedown', onMouseDown)
-      container.removeEventListener('mousemove', onMouseMove)
-      container.removeEventListener('mouseup', onMouseUp)
+      container.removeEventListener('pointerdown', onPointerDown)
+      container.removeEventListener('pointermove', onPointerMove)
+      container.removeEventListener('pointerup', onPointerUp)
     }
   }, [selectedDrawingId, activeSymbol, updateDrawing])
 
@@ -751,11 +739,11 @@ export function ChartPanel({ klines, liveCandle, loading, onChartReady, vwapEnab
         )}
         <div
           data-drawing-overlay
-          onMouseDown={handleOverlayMouseDown}
-          onMouseMove={handleOverlayMouseMove}
-          onMouseUp={handleOverlayMouseUp}
-          onMouseLeave={() => setOverlayCursor(null)}
-          className={`absolute inset-0 z-10 ${activeTool === 'cursor' ? 'pointer-events-none' : 'pointer-events-auto'} ${isPlacing ? 'cursor-crosshair' : ''}`}
+          onPointerDown={handleOverlayPointerDown}
+          onPointerMove={handleOverlayPointerMove}
+          onPointerUp={handleOverlayPointerUp}
+          onPointerLeave={() => { overlayPointerIdRef.current = null; setOverlayCursor(null) }}
+          className={`absolute inset-0 z-10 ${activeTool === 'cursor' ? 'pointer-events-none' : 'pointer-events-auto cursor-crosshair'}`}
         >
           {overlayCursor && activeTool !== 'cursor' && (
             <>
@@ -765,7 +753,7 @@ export function ChartPanel({ klines, liveCandle, loading, onChartReady, vwapEnab
                 style={{
                   top: overlayCursor.y,
                   height: 1,
-                  backgroundImage: 'repeating-linear-gradient(to right, #94a3b8 0, #94a3b8 4px, transparent 4px, transparent 8px)',
+                  backgroundImage: 'repeating-linear-gradient(to right, #3b82f6 0, #3b82f6 4px, transparent 4px, transparent 8px)',
                 }}
               />
               {/* vertical dashed line */}
@@ -774,7 +762,7 @@ export function ChartPanel({ klines, liveCandle, loading, onChartReady, vwapEnab
                 style={{
                   left: overlayCursor.x,
                   width: 1,
-                  backgroundImage: 'repeating-linear-gradient(to bottom, #94a3b8 0, #94a3b8 4px, transparent 4px, transparent 8px)',
+                  backgroundImage: 'repeating-linear-gradient(to bottom, #3b82f6 0, #3b82f6 4px, transparent 4px, transparent 8px)',
                 }}
               />
               {/* price label on right edge */}
