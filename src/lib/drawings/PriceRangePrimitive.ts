@@ -35,6 +35,7 @@ function timeToXExtrapolated(chart: IChartApi, time: number, fallback: number): 
 }
 
 const HANDLE_RADIUS = 6
+const DELETE_ICON_SIZE = 16
 
 class PriceRangeRenderer implements IPrimitivePaneRenderer {
   drawing: Drawing
@@ -43,14 +44,16 @@ class PriceRangeRenderer implements IPrimitivePaneRenderer {
   y1: number
   y2: number
   selected: boolean
+  chartWidth: number
 
-  constructor(drawing: Drawing, x1: number, x2: number, y1: number, y2: number, selected: boolean) {
+  constructor(drawing: Drawing, x1: number, x2: number, y1: number, y2: number, selected: boolean, chartWidth: number) {
     this.drawing = drawing
     this.x1 = x1
     this.x2 = x2
     this.y1 = y1
     this.y2 = y2
     this.selected = selected
+    this.chartWidth = chartWidth
   }
 
   draw(target: DrawTarget) {
@@ -195,6 +198,30 @@ class PriceRangeRenderer implements IPrimitivePaneRenderer {
         ctx.arc(x2 * hr, y2 * vr, HANDLE_RADIUS * Math.min(hr, vr), 0, Math.PI * 2)
         ctx.fill()
         ctx.stroke()
+
+        // Delete icon — 10px outside the top-right corner of the box
+        const MARGIN = 10
+        const tY = Math.min(y1, y2)
+        const rX = Math.max(x1, x2)
+        const iconX = (rX + MARGIN - DELETE_ICON_SIZE / 2) * hr
+        const iconY = (tY - MARGIN - DELETE_ICON_SIZE / 2) * vr
+        const iw = DELETE_ICON_SIZE * hr
+        const ih = DELETE_ICON_SIZE * vr
+        const pad = 4
+
+        ctx.fillStyle = '#334155'
+        ctx.beginPath()
+        ctx.roundRect(iconX, iconY - ih / 2, iw, ih, 3)
+        ctx.fill()
+
+        ctx.strokeStyle = '#f87171'
+        ctx.lineWidth = 1.5 * Math.min(hr, vr)
+        ctx.beginPath()
+        ctx.moveTo(iconX + pad * hr, iconY - ih / 2 + pad * vr)
+        ctx.lineTo(iconX + iw - pad * hr, iconY + ih / 2 - pad * vr)
+        ctx.moveTo(iconX + iw - pad * hr, iconY - ih / 2 + pad * vr)
+        ctx.lineTo(iconX + pad * hr, iconY + ih / 2 - pad * vr)
+        ctx.stroke()
       }
 
       ctx.restore()
@@ -228,7 +255,7 @@ class PriceRangePaneView implements IPrimitivePaneView {
     const x2 = timeToXExtrapolated(this.chart, p1?.time as number ?? 0, chartWidth)
     const y1 = this.series.priceToCoordinate(p0?.value ?? 0) ?? 0
     const y2 = this.series.priceToCoordinate(p1?.value ?? 0) ?? 0
-    return new PriceRangeRenderer(this.drawing, x1, x2, y1, y2, this.selected)
+    return new PriceRangeRenderer(this.drawing, x1, x2, y1, y2, this.selected, chartWidth)
   }
 }
 
@@ -237,16 +264,16 @@ export class PriceRangePrimitive implements ISeriesPrimitive<Time> {
   private _param: SeriesAttachedParameter<Time> | null = null
   private _selected: boolean = false
   private onSelect: (id: string) => void
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  private onDelete: (id: string) => void
 
   constructor(
     drawing: Drawing,
     onSelect: (id: string) => void,
-    _onDelete: (id: string) => void,
+    onDelete: (id: string) => void,
   ) {
     this.drawing = drawing
     this.onSelect = onSelect
-    void _onDelete
+    this.onDelete = onDelete
   }
 
   attached(param: SeriesAttachedParameter<Time>) {
@@ -279,8 +306,19 @@ export class PriceRangePrimitive implements ISeriesPrimitive<Time> {
     const y1 = _param.series.priceToCoordinate(p0?.value ?? 0) ?? -9999
     const y2 = _param.series.priceToCoordinate(p1?.value ?? 0) ?? -9999
 
-    // Anchor handles take priority when selected
+    // Anchor handles and delete icon take priority when selected
     if (_selected) {
+      const MARGIN = 10
+      const topY = Math.min(y1, y2)
+      const rightX = Math.max(x1, x2)
+      const iconX = rightX + MARGIN - DELETE_ICON_SIZE / 2
+      const iconY = topY - MARGIN - DELETE_ICON_SIZE / 2
+      if (
+        x >= iconX && x <= iconX + DELETE_ICON_SIZE &&
+        y >= iconY - DELETE_ICON_SIZE / 2 && y <= iconY + DELETE_ICON_SIZE / 2
+      ) {
+        return { externalId: `delete:${drawing.id}`, cursorStyle: 'pointer', zOrder: 'top', isBackground: false }
+      }
       if (Math.hypot(x - x1, y - y1) <= HANDLE_RADIUS + 4) {
         return { externalId: `anchor0:${drawing.id}`, cursorStyle: 'move', zOrder: 'top', isBackground: false }
       }
@@ -318,7 +356,11 @@ export class PriceRangePrimitive implements ISeriesPrimitive<Time> {
     if (!param.point) return
     const hit = this.hitTest(param.point.x, param.point.y)
     if (!hit) return
-    this.onSelect(this.drawing.id)
+    if (hit.externalId.startsWith('delete:')) {
+      this.onDelete(this.drawing.id)
+    } else {
+      this.onSelect(this.drawing.id)
+    }
   }
 
   paneViews(): IPrimitivePaneView[] {

@@ -11,7 +11,7 @@ import type {
 
 type DrawTarget = Parameters<IPrimitivePaneRenderer['draw']>[0]
 import type { Drawing } from '@/types'
-import { FIB_LEVELS, FIB_LEVEL_COLORS, getFibLevelPrice, getFibBoxTimeRange, getTopmostAnchorIndex, formatFibLabel } from './fibonacciLevels'
+import { FIB_LEVELS, FIB_LEVEL_COLORS, getFibLevelPrice, getFibBoxTimeRange, formatFibLabel } from './fibonacciLevels'
 
 function timeToXExtrapolated(chart: IChartApi, time: number, fallback: number): number {
   const rawX = chart.timeScale().timeToCoordinate(time as Time)
@@ -36,7 +36,7 @@ function timeToXExtrapolated(chart: IChartApi, time: number, fallback: number): 
 }
 
 const DELETE_ICON_SIZE = 16
-const DELETE_ICON_OFFSET = 20
+
 const HANDLE_RADIUS = 6
 const TREND_LINE_COLOR = '#9ca3af'
 const ZONE_FILL_OPACITY = 0.15
@@ -140,11 +140,12 @@ class FibonacciRenderer implements IPrimitivePaneRenderer {
           ctx.stroke()
         }
 
-        // Delete icon above whichever anchor is topmost on screen
-        const topmostIndex = getTopmostAnchorIndex(points)
-        const topY = anchorScreens[topmostIndex].y
-        const iconX = (chart.timeScale().width() - DELETE_ICON_SIZE - DELETE_ICON_OFFSET) * hr
-        const iconY = topY - DELETE_ICON_OFFSET * vr
+        // Delete icon 10px outside the top-right corner of the drawing
+        const MARGIN = 10
+        const rightX = Math.max(...anchorScreens.map(a => a.x))
+        const topY = Math.min(...anchorScreens.map(a => a.y))
+        const iconX = rightX + MARGIN * hr - (DELETE_ICON_SIZE / 2) * hr
+        const iconY = topY - MARGIN * vr - (DELETE_ICON_SIZE / 2) * vr
         const iw = DELETE_ICON_SIZE * hr
         const ih = DELETE_ICON_SIZE * vr
 
@@ -248,13 +249,16 @@ export class FibonacciPrimitive implements ISeriesPrimitive<Time> {
       }
     }
 
-    // Delete icon, anchored above whichever ControlPoint is topmost on screen
+    // Delete icon — 10px outside the top-right corner of the drawing
     if (_selected) {
+      const MARGIN = 10
       const chartWidth = _param.chart.timeScale().width()
-      const topmostIndex = getTopmostAnchorIndex(points)
-      const topY = _param.series.priceToCoordinate(points[topmostIndex].value) ?? 0
-      const iconX = chartWidth - DELETE_ICON_SIZE - DELETE_ICON_OFFSET
-      const iconY = topY - DELETE_ICON_OFFSET
+      const anchorXs = points.map(p => timeToXExtrapolated(_param.chart, p.time as number, chartWidth))
+      const anchorYs = points.map(p => _param.series.priceToCoordinate(p.value) ?? 0)
+      const rightX = Math.max(...anchorXs)
+      const topY = Math.min(...anchorYs)
+      const iconX = rightX + MARGIN - DELETE_ICON_SIZE / 2
+      const iconY = topY - MARGIN - DELETE_ICON_SIZE / 2
       if (
         x >= iconX && x <= iconX + DELETE_ICON_SIZE &&
         y >= iconY - DELETE_ICON_SIZE / 2 && y <= iconY + DELETE_ICON_SIZE / 2
