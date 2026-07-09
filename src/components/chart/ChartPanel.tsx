@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
-import { createChart, ColorType, CrosshairMode, LineStyle, CandlestickSeries, LineSeries } from 'lightweight-charts'
+import { createChart, ColorType, CrosshairMode, LineStyle, CandlestickSeries, LineSeries, HistogramSeries } from 'lightweight-charts'
 import type { IChartApi, ISeriesApi, Time } from 'lightweight-charts'
 import type { Kline, VwapAnchor } from '@/types'
 import { computeVwap, computeVwapLive } from '@/lib/vwap'
 import { computeBaseline, computeBaselineLive } from '@/lib/baseline'
+import { computeVolumeSMA } from '@/lib/volumeMA'
 import { DrawingToolbar } from './DrawingToolbar'
 import { DrawingEditDialog } from './DrawingEditDialog'
 import { useAppStore } from '@/store'
@@ -40,15 +41,18 @@ interface Props {
   vwapAnchor: VwapAnchor
   blEnabled: boolean
   blSlowEnabled: boolean
+  volumeEnabled?: boolean
 }
 
-export function ChartPanel({ klines, liveCandle, loading, onChartReady, vwapEnabled, vwapAnchor, blEnabled, blSlowEnabled }: Props) {
+export function ChartPanel({ klines, liveCandle, loading, onChartReady, vwapEnabled, vwapAnchor, blEnabled, blSlowEnabled, volumeEnabled = true }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
   const seriesRef = useRef<ISeriesApi<'Candlestick', Time> | null>(null)
   const vwapRef = useRef<ISeriesApi<'Line', Time> | null>(null)
   const blRef = useRef<ISeriesApi<'Line', Time> | null>(null)
   const blSlowRef = useRef<ISeriesApi<'Line', Time> | null>(null)
+  const volumeRef = useRef<ISeriesApi<'Histogram', Time> | null>(null)
+  const volumeMARef = useRef<ISeriesApi<'Line', Time> | null>(null)
 
   const activeTool = useAppStore((s) => s.activeTool)
   const setActiveTool = useAppStore((s) => s.setActiveTool)
@@ -314,6 +318,24 @@ export function ChartPanel({ klines, liveCandle, loading, onChartReady, vwapEnab
       lastValueVisible: true,
     })
 
+    const volume = chart.addSeries(HistogramSeries, {
+      priceFormat: { type: 'volume' },
+      priceScaleId: '',
+      priceLineVisible: false,
+      lastValueVisible: false,
+    })
+    volume.priceScale().applyOptions({
+      scaleMargins: { top: 0.85, bottom: 0 },
+    })
+
+    const volumeMA = chart.addSeries(LineSeries, {
+      color: '#FF9800',
+      lineWidth: 1,
+      priceScaleId: '',
+      priceLineVisible: false,
+      lastValueVisible: false,
+    })
+
     // Wire selection via chart click events (cursor mode only — overlay is pointer-events-none)
     chart.subscribeClick((param) => {
       if (!param.hoveredObjectId) {
@@ -348,6 +370,8 @@ export function ChartPanel({ klines, liveCandle, loading, onChartReady, vwapEnab
     vwapRef.current = vwap
     blRef.current = bl
     blSlowRef.current = blSlow
+    volumeRef.current = volume
+    volumeMARef.current = volumeMA
     onChartReady?.(chart)
 
     const observer = new ResizeObserver(() => {
@@ -693,6 +717,31 @@ export function ChartPanel({ klines, liveCandle, loading, onChartReady, vwapEnab
     )
   }, [klines, blEnabled, blSlowEnabled])
 
+  // Volume full reload + candlestick margin adjustment
+  useEffect(() => {
+    if (!volumeRef.current || !volumeMARef.current || !seriesRef.current) return
+    if (!volumeEnabled || !klines.length) {
+      volumeRef.current.setData([])
+      volumeMARef.current.setData([])
+      seriesRef.current.priceScale().applyOptions({ scaleMargins: { top: 0, bottom: 0 } })
+      return
+    }
+    seriesRef.current.priceScale().applyOptions({ scaleMargins: { top: 0, bottom: 0.2 } })
+    volumeRef.current.setData(
+      klines.map((k) => ({
+        time: k.time as Time,
+        value: k.volume,
+        color: k.close >= k.open ? 'rgba(38,166,154,0.5)' : 'rgba(239,83,80,0.5)',
+      }))
+    )
+    const smaValues = computeVolumeSMA(klines)
+    volumeMARef.current.setData(
+      klines
+        .map((k, i) => ({ time: k.time as Time, value: smaValues[i] }))
+        .filter((d): d is { time: Time; value: number } => d.value !== null)
+    )
+  }, [klines, volumeEnabled])
+
   // Live update: update last candle in-place without touching the viewport
   useEffect(() => {
     if (!seriesRef.current || !liveCandle) return
@@ -711,6 +760,21 @@ export function ChartPanel({ klines, liveCandle, loading, onChartReady, vwapEnab
       const { fast, slow } = computeBaselineLive(klines, liveCandle)
       if (blRef.current && blEnabled) blRef.current.update({ time: liveCandle.time as Time, value: fast })
       if (blSlowRef.current && blSlowEnabled) blSlowRef.current.update({ time: liveCandle.time as Time, value: slow })
+    }
+    if (volumeEnabled && volumeRef.current && volumeMARef.current && klines.length) {
+      volumeRef.current.update({
+        time: liveCandle.time as Time,
+        value: liveCandle.volume,
+        color: liveCandle.close >= liveCandle.open ? 'rgba(38,166,154,0.5)' : 'rgba(239,83,80,0.5)',
+      })
+      const period = 20
+      const volumes = klines.map((k) => k.volume)
+      const lastIdx = klines.length - 1
+      if (klines[lastIdx]?.time === liveCandle.time) volumes[lastIdx] = liveCandle.volume
+      if (volumes.length >= period) {
+        const sum = volumes.slice(volumes.length - period).reduce((a, b) => a + b, 0)
+        volumeMARef.current.update({ time: liveCandle.time as Time, value: sum / period })
+      }
     }
   }, [liveCandle]) // eslint-disable-line react-hooks/exhaustive-deps
 

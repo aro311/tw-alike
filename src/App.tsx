@@ -9,6 +9,7 @@ import { ChartPanel } from '@/components/chart/ChartPanel'
 import { IntervalPicker } from '@/components/chart/IntervalPicker'
 import { VwapSelector } from '@/components/chart/VwapSelector'
 import { BaselineToggle } from '@/components/chart/BaselineToggle'
+import { VolumeToggle } from '@/components/chart/VolumeToggle'
 import { RsiPanel } from '@/components/chart/RsiPanel'
 import { WatchlistPanel } from '@/components/watchlist/WatchlistPanel'
 
@@ -16,7 +17,7 @@ const RSI_MIN_PX = 80
 const RSI_DEFAULT_RATIO = 0.28 // RSI panel takes 28% of chart area height
 
 export default function App() {
-  const { activeSymbol, watchlist, getSymbolSettings, setInterval, vwapEnabled, vwapAnchor, setVwapEnabled, setVwapAnchor, blEnabled, blSlowEnabled, setBlEnabled, setBlSlowEnabled } = useAppStore()
+  const { activeSymbol, watchlist, getSymbolSettings, setInterval, vwapEnabled, vwapAnchor, setVwapEnabled, setVwapAnchor, blEnabled, blSlowEnabled, setBlEnabled, setBlSlowEnabled, toggleIndicator } = useAppStore()
   const tickers = useBinanceTicker(watchlist)
   const dailyOpens = useDailyOpen(watchlist)
   const settings = getSymbolSettings(activeSymbol)
@@ -99,6 +100,8 @@ export default function App() {
   }, [])
 
   const rsiConfig = settings.indicators.find((i) => i.type === 'RSI')
+  const volumeConfig = settings.indicators.find((i) => i.type === 'VOLUME')
+  const volumeEnabled = volumeConfig?.enabled ?? true
 
   return (
     <TooltipProvider>
@@ -134,6 +137,10 @@ export default function App() {
               onChange={(interval) => setInterval(activeSymbol, interval)}
               rightSlot={
                 <div className="flex items-center gap-2">
+                  <VolumeToggle
+                    enabled={volumeEnabled}
+                    onToggle={() => toggleIndicator(activeSymbol, 'VOLUME')}
+                  />
                   <VwapSelector
                     enabled={vwapEnabled}
                     anchor={vwapAnchor}
@@ -163,6 +170,7 @@ export default function App() {
                   vwapAnchor={vwapAnchor}
                   blEnabled={blEnabled}
                   blSlowEnabled={blSlowEnabled}
+                  volumeEnabled={volumeEnabled}
                 />
               </div>
 
