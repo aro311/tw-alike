@@ -138,7 +138,7 @@ export function ChartPanel({ klines, liveCandle, loading, onChartReady, vwapEnab
       const time = (coordinateToTimeExtrapolated(chartRef.current!, e.nativeEvent.offsetX, klines) ?? 0) as number
       brushInProgressRef.current = [{ time, value: price }]
       const drawing: Drawing = { id: '__preview__', type: 'brush', points: [{ time, value: price }], color: activeColor, width: activeWidth }
-      const primitive = new BrushPrimitive(drawing, () => {})
+      const primitive = new BrushPrimitive(drawing, () => {}, () => {})
       series.attachPrimitive(primitive)
       previewRef.current = { primitive, drawing }
     }
@@ -520,12 +520,17 @@ export function ChartPanel({ klines, liveCandle, loading, onChartReady, vwapEnab
     for (const drawing of drawings) {
       if (drawing.type !== 'brush') continue
       if (!brushCurrent.has(drawing.id)) {
-        const primitive = new BrushPrimitive(drawing, (id) => setSelectedDrawingId(id))
+        const primitive = new BrushPrimitive(
+          drawing,
+          (id) => setSelectedDrawingId(id),
+          (id) => removeDrawing(activeSymbol, id),
+        )
         series.attachPrimitive(primitive)
         brushCurrent.set(drawing.id, primitive)
       } else {
         brushCurrent.get(drawing.id)!.updateDrawing(drawing)
       }
+      brushCurrent.get(drawing.id)!.setSelected(selectedDrawingId === drawing.id)
     }
   }, [drawings, selectedDrawingId, activeSymbol, setSelectedDrawingId, removeDrawing, updateDrawing])
 
