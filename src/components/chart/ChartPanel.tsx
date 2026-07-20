@@ -5,6 +5,7 @@ import type { Kline, VwapAnchor } from '@/types'
 import { computeVwap, computeVwapLive } from '@/lib/vwap'
 import { computeBaseline, computeBaselineLive } from '@/lib/baseline'
 import { computeVolumeSMA } from '@/lib/volumeMA'
+import { computeRemainingMs, formatCountdown } from '@/lib/countdown'
 import { DrawingToolbar } from './DrawingToolbar'
 import { DrawingEditDialog } from './DrawingEditDialog'
 import { useAppStore } from '@/store'
@@ -59,6 +60,7 @@ export function ChartPanel({ klines, liveCandle, loading, onChartReady, vwapEnab
   const activeColor = useAppStore((s) => s.activeColor)
   const activeWidth = useAppStore((s) => s.activeWidth)
   const activeSymbol = useAppStore((s) => s.activeSymbol)
+  const interval = useAppStore((s) => s.getSymbolSettings(s.activeSymbol).interval)
   const selectedDrawingId = useAppStore((s) => s.selectedDrawingId)
   const setSelectedDrawingId = useAppStore((s) => s.setSelectedDrawingId)
   const addDrawing = useAppStore((s) => s.addDrawing)
@@ -98,6 +100,14 @@ export function ChartPanel({ klines, liveCandle, loading, onChartReady, vwapEnab
   const previewRef = useRef<{ primitive: AnyDrawingPrimitive; drawing: Drawing } | null>(null)
   // Overlay crosshair position (shown while a drawing tool is active)
   const [overlayCursor, setOverlayCursor] = useState<{ x: number; y: number; price: number } | null>(null)
+  // Ticks every second to drive the candle-close countdown label
+  const [now, setNow] = useState(() => Date.now())
+  const [priceScaleWidth, setPriceScaleWidth] = useState(65)
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(id)
+  }, [])
   // True between first and second click while a two-point drawing is being placed
 
   // ID of the drawing being edited via double-click dialog
@@ -295,6 +305,7 @@ export function ChartPanel({ klines, liveCandle, loading, onChartReady, vwapEnab
       borderVisible: false,
       wickUpColor: '#ffffff',
       wickDownColor: '#808080',
+      lastValueVisible: false,
     })
 
     const vwap = chart.addSeries(LineSeries, {
@@ -374,15 +385,25 @@ export function ChartPanel({ klines, liveCandle, loading, onChartReady, vwapEnab
     volumeMARef.current = volumeMA
     onChartReady?.(chart)
 
+    const updatePriceScaleWidth = () => {
+      if (!containerRef.current) return
+      const paneW = chart.paneSize().width
+      const containerW = containerRef.current.clientWidth
+      setPriceScaleWidth(Math.max(50, containerW - paneW))
+    }
+
     const observer = new ResizeObserver(() => {
       if (containerRef.current) {
         chart.applyOptions({
           width: containerRef.current.clientWidth,
           height: containerRef.current.clientHeight,
         })
+        updatePriceScaleWidth()
       }
     })
     observer.observe(containerRef.current)
+    // Initial measurement after chart has laid out
+    setTimeout(updatePriceScaleWidth, 0)
 
     return () => {
       observer.disconnect()
@@ -787,6 +808,10 @@ export function ChartPanel({ klines, liveCandle, loading, onChartReady, vwapEnab
     ? drawings.find((d) => d.id === editingDrawingId) ?? null
     : null
 
+  const lastCandle = liveCandle ?? klines[klines.length - 1] ?? null
+  const countdownLabel = lastCandle ? formatCountdown(computeRemainingMs(lastCandle.time, interval, now)) : null
+  const countdownY = lastCandle ? seriesRef.current?.priceToCoordinate(lastCandle.close) ?? null : null
+
   return (
     <div className="relative flex-1 min-w-0 min-h-0 flex">
       <DrawingToolbar />
@@ -844,6 +869,15 @@ export function ChartPanel({ klines, liveCandle, loading, onChartReady, vwapEnab
             </>
           )}
         </div>
+        {countdownLabel !== null && countdownY !== null && lastCandle !== null && (
+          <div
+            className="absolute right-0 pointer-events-none flex flex-col items-center justify-center text-[11px] leading-tight text-black bg-white -translate-y-1/2 z-20"
+            style={{ top: countdownY, width: priceScaleWidth }}
+          >
+            <span>{lastCandle.close.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+            <span>{countdownLabel}</span>
+          </div>
+        )}
         <div ref={containerRef} className="w-full h-full" />
       </div>
     </div>

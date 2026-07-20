@@ -15,6 +15,7 @@ vi.mock('lightweight-charts', () => ({
       detachPrimitive: vi.fn(),
       coordinateToPrice: (y: number) => 1000 - y,
       priceToCoordinate: (price: number) => 1000 - price,
+      priceScale: () => ({ applyOptions: vi.fn() }),
     }
     const chart = {
       addSeries: () => series,
@@ -31,11 +32,13 @@ vi.mock('lightweight-charts', () => ({
       subscribeCrosshairMove: vi.fn(),
       subscribeDblClick: vi.fn(),
       remove: vi.fn(),
+      paneSize: () => ({ width: 800 }),
     }
     return chart
   },
   CandlestickSeries: {},
   LineSeries: {},
+  HistogramSeries: {},
   ColorType: { Solid: 'solid' },
   CrosshairMode: { Normal: 0 },
   LineStyle: { Dashed: 1 },
@@ -87,9 +90,9 @@ describe('Fibonacci ControlPoint dragging', () => {
     const chartContainer = container.querySelector('[data-drawing-overlay]')!.nextElementSibling!
 
     // points[0] = { time: 100, value: 200 } → screen (x: 100, y: 1000 - 200 = 800)
-    fireEvent.mouseDown(chartContainer, { offsetX: 100, offsetY: 800 })
-    fireEvent.mouseMove(chartContainer, { offsetX: 120, offsetY: 760 })
-    fireEvent.mouseUp(chartContainer, { offsetX: 120, offsetY: 760 })
+    fireEvent.pointerDown(chartContainer, { offsetX: 100, offsetY: 800 })
+    fireEvent.pointerMove(chartContainer, { offsetX: 120, offsetY: 760 })
+    fireEvent.pointerUp(chartContainer, { offsetX: 120, offsetY: 760 })
 
     const drawing = useAppStore.getState().getSymbolSettings('BTCUSDT').drawings[0]
     expect(drawing.points[0]).toEqual({ time: 120, value: 240 })
@@ -101,9 +104,9 @@ describe('Fibonacci ControlPoint dragging', () => {
     const chartContainer = container.querySelector('[data-drawing-overlay]')!.nextElementSibling!
 
     // points[1] = { time: 300, value: 100 } → screen (x: 300, y: 1000 - 100 = 900)
-    fireEvent.mouseDown(chartContainer, { offsetX: 300, offsetY: 900 })
-    fireEvent.mouseMove(chartContainer, { offsetX: 280, offsetY: 950 })
-    fireEvent.mouseUp(chartContainer, { offsetX: 280, offsetY: 950 })
+    fireEvent.pointerDown(chartContainer, { offsetX: 300, offsetY: 900 })
+    fireEvent.pointerMove(chartContainer, { offsetX: 280, offsetY: 950 })
+    fireEvent.pointerUp(chartContainer, { offsetX: 280, offsetY: 950 })
 
     const drawing = useAppStore.getState().getSymbolSettings('BTCUSDT').drawings[0]
     expect(drawing.points[1]).toEqual({ time: 280, value: 50 })
@@ -115,10 +118,10 @@ describe('Fibonacci ControlPoint dragging', () => {
     const chartContainer = container.querySelector('[data-drawing-overlay]')!.nextElementSibling!
 
     // points[0] = { time: 100, value: 200 } → screen (x: 100, y: 800)
-    fireEvent.mouseDown(chartContainer, { offsetX: 100, offsetY: 800 })
+    fireEvent.pointerDown(chartContainer, { offsetX: 100, offsetY: 800 })
     // Drag to x: 750, which is past the mocked "loaded data range" (coordinateToTime → null)
-    fireEvent.mouseMove(chartContainer, { offsetX: 750, offsetY: 780 })
-    fireEvent.mouseUp(chartContainer, { offsetX: 750, offsetY: 780 })
+    fireEvent.pointerMove(chartContainer, { offsetX: 750, offsetY: 780 })
+    fireEvent.pointerUp(chartContainer, { offsetX: 750, offsetY: 780 })
 
     const drawing = useAppStore.getState().getSymbolSettings('BTCUSDT').drawings[0]
     expect(drawing.points[0].time).not.toBe(0)

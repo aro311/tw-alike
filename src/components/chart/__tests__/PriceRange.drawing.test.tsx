@@ -11,6 +11,7 @@ vi.mock('lightweight-charts', () => ({
       detachPrimitive: vi.fn(),
       coordinateToPrice: vi.fn(() => 50000),
       priceToCoordinate: vi.fn(() => 100),
+      priceScale: () => ({ applyOptions: vi.fn() }),
     }),
     applyOptions: vi.fn(),
     timeScale: () => ({
@@ -22,9 +23,11 @@ vi.mock('lightweight-charts', () => ({
     subscribeCrosshairMove: vi.fn(),
     subscribeDblClick: vi.fn(),
     remove: vi.fn(),
+    paneSize: () => ({ width: 800 }),
   }),
   CandlestickSeries: {},
   LineSeries: {},
+  HistogramSeries: {},
   ColorType: { Solid: 'solid' },
   CrosshairMode: { Normal: 0 },
   LineStyle: { Dashed: 1 },
@@ -69,15 +72,17 @@ describe('PriceRange drawing tool', () => {
     })
     const { container } = render(<ChartPanel {...defaultProps} />)
     const overlay = container.querySelector('[data-drawing-overlay]')!
-    fireEvent.mouseDown(overlay, { offsetX: 100, offsetY: 80 })
-    fireEvent.mouseUp(overlay, { offsetX: 100, offsetY: 140 })
+    fireEvent.pointerDown(overlay, { offsetX: 100, offsetY: 80 })
+    fireEvent.pointerUp(overlay, { offsetX: 100, offsetY: 80 })
+    fireEvent.pointerDown(overlay, { offsetX: 100, offsetY: 140 })
+    fireEvent.pointerUp(overlay, { offsetX: 100, offsetY: 140 })
     const drawings = useAppStore.getState().getSymbolSettings('BTCUSDT').drawings
     expect(drawings).toHaveLength(1)
     expect(drawings[0]).toMatchObject({
       type: 'price_range',
       color: '#22c55e',
       width: 2,
-      points: [{ time: 0, value: 50000 }, { time: 0, value: 50000 }],
+      points: [{ time: 1000000, value: 50000 }, { time: 1000000, value: 50000 }],
     })
   })
 
@@ -85,8 +90,8 @@ describe('PriceRange drawing tool', () => {
     useAppStore.setState({ activeTool: 'price_range', activeSymbol: 'BTCUSDT' })
     const { container } = render(<ChartPanel {...defaultProps} />)
     const overlay = container.querySelector('[data-drawing-overlay]')!
-    fireEvent.mouseDown(overlay, { offsetX: 100, offsetY: 100 })
-    fireEvent.mouseUp(overlay, { offsetX: 102, offsetY: 101 })
+    fireEvent.pointerDown(overlay, { offsetX: 100, offsetY: 100 })
+    fireEvent.pointerUp(overlay, { offsetX: 102, offsetY: 101 })
     expect(useAppStore.getState().getSymbolSettings('BTCUSDT').drawings).toHaveLength(0)
   })
 })

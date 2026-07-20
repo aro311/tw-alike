@@ -13,6 +13,7 @@ vi.mock('lightweight-charts', () => ({
       detachPrimitive: vi.fn(),
       coordinateToPrice: vi.fn(() => 50000),
       priceToCoordinate: vi.fn(() => 100),
+      priceScale: () => ({ applyOptions: vi.fn() }),
     }),
     applyOptions: vi.fn(),
     timeScale: () => ({
@@ -24,9 +25,11 @@ vi.mock('lightweight-charts', () => ({
     subscribeCrosshairMove: vi.fn(),
     subscribeDblClick: vi.fn(),
     remove: vi.fn(),
+    paneSize: () => ({ width: 800 }),
   }),
   CandlestickSeries: {},
   LineSeries: {},
+  HistogramSeries: {},
   ColorType: { Solid: 'solid' },
   CrosshairMode: { Normal: 0 },
   LineStyle: { Dashed: 1 },
@@ -73,10 +76,10 @@ describe('Brush drawing tool', () => {
     const { container } = render(<ChartPanel {...defaultProps} />)
     const overlay = container.querySelector('[data-drawing-overlay]')!
 
-    fireEvent.mouseDown(overlay, { offsetX: 10, offsetY: 20 })
-    fireEvent.mouseMove(overlay, { offsetX: 20, offsetY: 30 })
-    fireEvent.mouseMove(overlay, { offsetX: 30, offsetY: 40 })
-    fireEvent.mouseUp(overlay)
+    fireEvent.pointerDown(overlay, { offsetX: 10, offsetY: 20 })
+    fireEvent.pointerMove(overlay, { offsetX: 20, offsetY: 30 })
+    fireEvent.pointerMove(overlay, { offsetX: 30, offsetY: 40 })
+    fireEvent.pointerUp(overlay)
 
     const drawings = useAppStore.getState().getSymbolSettings('BTCUSDT').drawings
     expect(drawings).toHaveLength(1)
@@ -96,8 +99,8 @@ describe('Brush drawing tool', () => {
     const { container } = render(<ChartPanel {...defaultProps} />)
     const overlay = container.querySelector('[data-drawing-overlay]')!
 
-    fireEvent.mouseDown(overlay, { offsetX: 10, offsetY: 20 })
-    fireEvent.mouseUp(overlay)
+    fireEvent.pointerDown(overlay, { offsetX: 10, offsetY: 20 })
+    fireEvent.pointerUp(overlay)
 
     const drawings = useAppStore.getState().getSymbolSettings('BTCUSDT').drawings
     expect(drawings).toHaveLength(0)
@@ -111,10 +114,10 @@ describe('Brush drawing tool', () => {
     const { container } = render(<ChartPanel {...defaultProps} />)
     const overlay = container.querySelector('[data-drawing-overlay]')!
 
-    fireEvent.mouseDown(overlay, { offsetX: 10, offsetY: 20 })
-    fireEvent.mouseMove(overlay, { offsetX: 20, offsetY: 30 })
-    fireEvent.mouseMove(overlay, { offsetX: 30, offsetY: 40 })
-    fireEvent.mouseUp(overlay)
+    fireEvent.pointerDown(overlay, { offsetX: 10, offsetY: 20 })
+    fireEvent.pointerMove(overlay, { offsetX: 20, offsetY: 30 })
+    fireEvent.pointerMove(overlay, { offsetX: 30, offsetY: 40 })
+    fireEvent.pointerUp(overlay)
 
     expect(useAppStore.getState().activeTool).toBe('cursor')
   })

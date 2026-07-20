@@ -12,6 +12,7 @@ vi.mock('lightweight-charts', () => ({
       detachPrimitive: vi.fn(),
       coordinateToPrice: vi.fn(() => 50000),
       priceToCoordinate: vi.fn(() => 100),
+      priceScale: () => ({ applyOptions: vi.fn() }),
     }),
     applyOptions: vi.fn(),
     timeScale: () => ({
@@ -23,9 +24,11 @@ vi.mock('lightweight-charts', () => ({
     subscribeCrosshairMove: vi.fn(),
     subscribeDblClick: vi.fn(),
     remove: vi.fn(),
+    paneSize: () => ({ width: 800 }),
   }),
   CandlestickSeries: {},
   LineSeries: {},
+  HistogramSeries: {},
   ColorType: { Solid: 'solid' },
   CrosshairMode: { Normal: 0 },
   LineStyle: { Dashed: 1 },
@@ -83,7 +86,8 @@ describe('ChartPanel drawing overlay', () => {
     })
     const { container } = render(<ChartPanel {...defaultProps} />)
     const overlay = container.querySelector('[data-drawing-overlay]')!
-    fireEvent.mouseDown(overlay, { offsetX: 50, offsetY: 100 })
+    fireEvent.pointerDown(overlay, { offsetX: 50, offsetY: 100 })
+    fireEvent.pointerUp(overlay, { offsetX: 50, offsetY: 100 })
     const drawings = useAppStore.getState().getSymbolSettings('BTCUSDT').drawings
     expect(drawings).toHaveLength(1)
     expect(drawings[0]).toMatchObject({
@@ -98,7 +102,8 @@ describe('ChartPanel drawing overlay', () => {
     useAppStore.setState({ activeTool: 'horizontal_ray', activeSymbol: 'BTCUSDT' })
     const { container } = render(<ChartPanel {...defaultProps} />)
     const overlay = container.querySelector('[data-drawing-overlay]')!
-    fireEvent.mouseDown(overlay, { offsetX: 50, offsetY: 100 })
+    fireEvent.pointerDown(overlay, { offsetX: 50, offsetY: 100 })
+    fireEvent.pointerUp(overlay, { offsetX: 50, offsetY: 100 })
     expect(useAppStore.getState().getSymbolSettings('BTCUSDT').drawings).toHaveLength(1)
     expect(useAppStore.getState().activeTool).toBe('cursor')
   })
@@ -107,10 +112,10 @@ describe('ChartPanel drawing overlay', () => {
     useAppStore.setState({ activeTool: 'price_range', activeSymbol: 'BTCUSDT' })
     const { container } = render(<ChartPanel {...defaultProps} />)
     const overlay = container.querySelector('[data-drawing-overlay]')!
-    fireEvent.mouseDown(overlay, { offsetX: 50, offsetY: 100 })
+    fireEvent.pointerDown(overlay, { offsetX: 50, offsetY: 100 })
     await userEvent.keyboard('{Escape}')
     expect(useAppStore.getState().activeTool).toBe('price_range')
-    fireEvent.mouseUp(overlay, { offsetX: 200, offsetY: 100 })
+    fireEvent.pointerUp(overlay, { offsetX: 200, offsetY: 100 })
     expect(useAppStore.getState().getSymbolSettings('BTCUSDT').drawings).toHaveLength(0)
   })
 
@@ -118,7 +123,8 @@ describe('ChartPanel drawing overlay', () => {
     useAppStore.setState({ activeTool: 'horizontal_ray', activeSymbol: 'BTCUSDT' })
     const { container } = render(<ChartPanel {...defaultProps} />)
     const overlay = container.querySelector('[data-drawing-overlay]')!
-    fireEvent.mouseDown(overlay, { offsetX: 50, offsetY: 100 })
+    fireEvent.pointerDown(overlay, { offsetX: 50, offsetY: 100 })
+    fireEvent.pointerUp(overlay, { offsetX: 50, offsetY: 100 })
     expect(useAppStore.getState().activeTool).toBe('cursor')
   })
 
@@ -126,8 +132,8 @@ describe('ChartPanel drawing overlay', () => {
     useAppStore.setState({ activeTool: 'price_range', activeSymbol: 'BTCUSDT' })
     const { container } = render(<ChartPanel {...defaultProps} />)
     const overlay = container.querySelector('[data-drawing-overlay]')!
-    fireEvent.mouseDown(overlay, { offsetX: 50, offsetY: 100 })
-    fireEvent.mouseUp(overlay, { offsetX: 52, offsetY: 101 })
+    fireEvent.pointerDown(overlay, { offsetX: 50, offsetY: 100 })
+    fireEvent.pointerUp(overlay, { offsetX: 52, offsetY: 101 })
     expect(useAppStore.getState().activeTool).toBe('price_range')
   })
 
