@@ -27,6 +27,24 @@ export function computeRemainingMs(openTimeSec: number, interval: Interval, nowM
   return Math.max(0, closeMs - nowMs)
 }
 
+// Returns the remaining ms adjusted per TradingView's display conventions:
+// - 3d: TradingView's cycle starts 1 day before Binance's epoch, so subtract 1 DAY.
+// - 1M: use the actual days in the opening month, not the fixed 30-day approximation.
+// - everything else: identical to computeRemainingMs.
+export function computeDisplayRemainingMs(openTimeSec: number, interval: Interval, nowMs: number): number {
+  const openMs = openTimeSec * 1000
+  if (interval === '1M') {
+    const d = new Date(openMs)
+    const daysInMonth = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate()
+    return Math.max(0, openMs + daysInMonth * DAY - nowMs)
+  }
+  const remaining = computeRemainingMs(openTimeSec, interval, nowMs)
+  if (interval === '3d') {
+    return Math.max(0, remaining - DAY)
+  }
+  return remaining
+}
+
 function pad(n: number): string {
   return String(n).padStart(2, '0')
 }

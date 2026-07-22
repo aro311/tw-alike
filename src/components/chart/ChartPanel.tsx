@@ -5,7 +5,7 @@ import type { Kline, VwapAnchor } from '@/types'
 import { computeVwap, computeVwapLive } from '@/lib/vwap'
 import { computeBaseline, computeBaselineLive } from '@/lib/baseline'
 import { computeVolumeSMA } from '@/lib/volumeMA'
-import { computeRemainingMs, formatCountdown } from '@/lib/countdown'
+import { computeDisplayRemainingMs, formatCountdown } from '@/lib/countdown'
 import { DrawingToolbar } from './DrawingToolbar'
 import { DrawingEditDialog } from './DrawingEditDialog'
 import { useAppStore } from '@/store'
@@ -362,17 +362,41 @@ export function ChartPanel({ klines, liveCandle, loading, onChartReady, vwapEnab
       }
     })
 
-    // Wire double-click to open the edit dialog for editable drawing types
+    // Wire double-click to open the edit dialog for editable drawing types.
+    // param.hoveredObjectId is unreliable in the browser: the React re-render triggered
+    // by the first click's setSelectedDrawingId fires requestUpdate(), which causes LW
+    // Charts to clear _internal_hoveredSource() before the dblclick fires. When
+    // hoveredObjectId is absent we fall back to a manual hit test at param.point.
     chart.subscribeDblClick((param) => {
       const state = useAppStore.getState()
       if (state.activeTool !== 'cursor') return
-      if (!param.hoveredObjectId) return
-      const id = param.hoveredObjectId as string
+
+      type HittablePrimitive = { hitTest(x: number, y: number): { externalId: string } | null }
+
+      let hitId: string | null = null
+      const rawId = param.hoveredObjectId as string | undefined
+      if (rawId && !rawId.startsWith('anchor') && !rawId.startsWith('delete:')) {
+        hitId = rawId
+      } else if (param.point) {
+        const { x, y } = param.point
+        const candidates: [string, HittablePrimitive][] = [
+          ...primitivesRef.current,
+          ...fibPrimitivesRef.current,
+          ...priceRangePrimitivesRef.current,
+        ]
+        const hit = candidates.find(([, prim]) => {
+          const result = prim.hitTest(x, y)
+          return result && !result.externalId.startsWith('anchor') && !result.externalId.startsWith('delete:')
+        })
+        if (hit) hitId = hit[0]
+      }
+
+      if (!hitId) return
       const symbol = state.activeSymbol
-      const drawing = state.getSymbolSettings(symbol).drawings.find((d) => d.id === id)
+      const drawing = state.getSymbolSettings(symbol).drawings.find((d) => d.id === hitId)
       if (!drawing) return
       if (drawing.type === 'horizontal_ray' || drawing.type === 'fibonacci' || drawing.type === 'price_range') {
-        setEditingDrawingId(id)
+        setEditingDrawingId(hitId)
       }
     })
 
@@ -809,7 +833,7 @@ export function ChartPanel({ klines, liveCandle, loading, onChartReady, vwapEnab
     : null
 
   const lastCandle = liveCandle ?? klines[klines.length - 1] ?? null
-  const countdownLabel = lastCandle ? formatCountdown(computeRemainingMs(lastCandle.time, interval, now)) : null
+  const countdownLabel = lastCandle ? formatCountdown(computeDisplayRemainingMs(lastCandle.time, interval, now)) : null
   const countdownY = lastCandle ? seriesRef.current?.priceToCoordinate(lastCandle.close) ?? null : null
 
   return (
